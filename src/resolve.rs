@@ -41,6 +41,7 @@ pub fn run(repo_root: &Path, ignore: &SecoxIgnore, staged: bool) -> Result<()> {
             Action::Rotate => {
                 show_rotation_guide(finding);
                 offer_env_var_replacement(finding)?;
+                check_git_history(finding, repo_root)?;
                 rotated += 1;
             }
             Action::Allow => {
@@ -205,6 +206,75 @@ fn replace_in_file(path: &Path, secret: &str, replacement: &str) -> Result<bool>
     let new_content = content.replacen(secret, replacement, 1);
     std::fs::write(path, new_content)?;
     Ok(true)
+}
+
+// ── git history check ─────────────────────────────────────────────────────────
+
+fn check_git_history(finding: &Finding, repo_root: &Path) -> Result<()> {
+    use std::process::Command;
+
+    if finding.secret_raw.is_empty() {
+        return Ok(());
+    }
+
+    // git log -S searches for commits that introduced or removed this exact string
+    let output = Command::new("git")
+        .args(["log", "--all", "--oneline", "-S", &finding.secret_raw])
+        .current_dir(repo_root)
+        .output();
+
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        _ => return Ok(()), // git not available, not a repo, or no history
+    };
+
+    let commits: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap_or("")
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if commits.is_empty() {
+        println!(
+            "  {} Secret not found in git history — only present in working tree.\n",
+            "✓".green()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "  {} Secret found in {} commit(s) in git history:\n",
+        "!".red().bold(),
+        commits.len().to_string().red().bold(),
+    );
+    for c in &commits {
+        println!("      {}", c.dimmed());
+    }
+
+    // Escape the secret for use in a shell heredoc / printf
+    let escaped = finding.secret_raw.replace('\'', "'\\''");
+
+    println!("\n  Rewrite history to remove the secret (requires git-filter-repo):\n");
+    println!(
+        "  {}",
+        format!("printf '{}==><REVOKED>\\n' > /tmp/replacements.txt", escaped).cyan()
+    );
+    println!(
+        "  {}",
+        "git filter-repo --replace-text /tmp/replacements.txt --force".cyan()
+    );
+    println!(
+        "  {}  {}",
+        "git push --force-with-lease".cyan(),
+        "# coordinate with your team first".dimmed(),
+    );
+    println!(
+        "\n  Install git-filter-repo: {}  or  {}\n",
+        "pip install git-filter-repo".dimmed(),
+        "brew install git-filter-repo".dimmed(),
+    );
+
+    Ok(())
 }
 
 // ── prompt helpers ────────────────────────────────────────────────────────────
