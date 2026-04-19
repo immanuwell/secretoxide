@@ -16,6 +16,37 @@ pub struct CompiledRule {
     pub regex: Regex,
 }
 
+use once_cell::sync::Lazy as _Lazy;
+
+/// Strings that indicate a value is a placeholder, not a real secret.
+static PLACEHOLDER_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^(example|test|dummy|placeholder|your[_\-]?|insert[_\-]?|replace[_\-]?|xxx+|aaa+|000+|changeme|fixme|todo|<[^>]+>|\*+|\.\.\.+|n/?a)").unwrap()
+});
+
+pub fn is_placeholder(value: &str) -> bool {
+    PLACEHOLDER_PATTERN.is_match(value)
+        || value.chars().collect::<std::collections::HashSet<_>>().len() <= 2
+}
+
+/// Shannon entropy in bits per character — genuine secrets tend to score > 3.5.
+pub fn entropy(s: &str) -> f64 {
+    if s.is_empty() {
+        return 0.0;
+    }
+    let mut freq = [0u32; 256];
+    for b in s.bytes() {
+        freq[b as usize] += 1;
+    }
+    let len = s.len() as f64;
+    freq.iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| {
+            let p = c as f64 / len;
+            -p * p.log2()
+        })
+        .sum()
+}
+
 pub fn redact(secret: &str) -> String {
     let n = secret.len();
     if n <= 8 {

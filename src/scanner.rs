@@ -4,8 +4,8 @@ use anyhow::Result;
 use walkdir::WalkDir;
 
 use crate::{
-    rules::{redact, RULES},
-    types::Finding,
+    rules::{entropy, is_placeholder, redact, RULES},
+    types::{Confidence, Finding},
 };
 
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
@@ -60,7 +60,12 @@ pub fn scan_content(
                         .unwrap_or("")
                 };
 
-                if secret.is_empty() {
+                if secret.is_empty() || is_placeholder(secret) {
+                    continue;
+                }
+
+                // Medium/low rules require decent entropy to reduce false positives.
+                if rule.meta.confidence != Confidence::High && entropy(secret) < 3.2 {
                     continue;
                 }
 
