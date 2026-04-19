@@ -216,3 +216,114 @@ fn slack_bot_token_detected() {
     let ids = findings_for(&src);
     assert!(ids.contains(&"slack-bot-token".to_string()), "{ids:?}");
 }
+
+// ── New provider rule tests ───────────────────────────────────────────────────
+
+#[test]
+fn gitlab_pat_detected() {
+    // glpat- + exactly 20 alphanumeric/hyphen/underscore chars
+    let key = t(&["glpat-", "abcdefghijklmnopqrst"]);
+    let src = format!("GITLAB_TOKEN={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"gitlab-pat".to_string()), "{ids:?}");
+}
+
+#[test]
+fn digitalocean_pat_detected() {
+    // dop_v1_ + exactly 64 lowercase hex chars
+    let key = t(&["dop_v1_", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", "e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"]);
+    let src = format!("DO_TOKEN={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"digitalocean-pat".to_string()), "{ids:?}");
+}
+
+#[test]
+fn docker_hub_token_detected() {
+    // dckr_pat_ + exactly 27 alphanumeric/hyphen/underscore chars
+    let key = t(&["dckr_pat_", "abcdefghijklmnopqrstuvwxyz0"]);
+    let src = format!("DOCKER_TOKEN={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"docker-hub-token".to_string()), "{ids:?}");
+}
+
+#[test]
+fn shopify_access_token_detected() {
+    // shpat_ + exactly 32 lowercase hex chars
+    let key = t(&["shpat_", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"]);
+    let src = format!("SHOPIFY_TOKEN={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"shopify-access-token".to_string()), "{ids:?}");
+}
+
+#[test]
+fn linear_api_key_detected() {
+    // lin_api_ + exactly 40 alphanumeric chars
+    let key = t(&["lin_api_", "abcdefghijklmnopqrstuvwxyzABCD1234567890"]);
+    let src = format!("LINEAR_KEY={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"linear-api-key".to_string()), "{ids:?}");
+}
+
+#[test]
+fn huggingface_token_detected() {
+    // hf_ + exactly 34 alphanumeric chars
+    let key = t(&["hf_", "abcdefghijklmnopqrstuvwxyzABCDEFGH"]);
+    let src = format!("HF_TOKEN={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"huggingface-token".to_string()), "{ids:?}");
+}
+
+#[test]
+fn databricks_token_detected() {
+    // dapi + exactly 32 lowercase hex chars
+    let key = t(&["dapi", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"]);
+    let src = format!("DATABRICKS_TOKEN={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"databricks-token".to_string()), "{ids:?}");
+}
+
+#[test]
+fn mailchimp_api_key_detected() {
+    // 32 lowercase hex chars + -us + 1-2 digits
+    let key = t(&["a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", "-us12"]);
+    let src = format!("MC_API_KEY={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"mailchimp-api-key".to_string()), "{ids:?}");
+}
+
+#[test]
+fn stripe_restricted_key_detected() {
+    // rk_live_ + 24+ alphanumeric chars
+    let key = t(&["rk_live_", "abcdefghijklmnopqrstuvwx"]);
+    let src = format!("STRIPE_KEY={key}");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"stripe-restricted-key".to_string()), "{ids:?}");
+}
+
+#[test]
+fn azure_storage_key_detected() {
+    // AccountKey= + exactly 86 base64 chars + == (64-byte key encoded)
+    // 26+26+10+2+22 = 86 chars: a-z, A-Z, 0-9, +/, then fill to 86
+    let key = t(&["AccountKey=", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/abcdefghijklmnopqrstuv"]);
+    let src = format!("DefaultEndpointsProtocol=https;{key}==;EndpointSuffix=core.windows.net");
+    let ids = findings_for(&src);
+    assert!(ids.contains(&"azure-storage-account-key".to_string()), "{ids:?}");
+}
+
+#[test]
+fn jwt_invalid_header_not_detected() {
+    // A string matching the JWT shape but with a non-JSON base64url header.
+    // eyJub3Rqc29u decodes to "{notjson" which is not valid JSON.
+    let src = "token: eyJub3Rqc29u.eyJzdWIiOiIxMjM0NTY3ODkwIn0.fakesignaturehere12345";
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"jwt".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
+fn natural_language_generic_secret_ignored() {
+    // A generic-secret match whose value is clearly English prose — should be suppressed
+    // by the bigram humanness filter.
+    let src = r#"secret = "TheseAreJustEnglishWordsHere""#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-secret".to_string()), "false positive: {ids:?}");
+}

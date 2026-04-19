@@ -67,6 +67,53 @@ pub fn looks_like_code_identifier(value: &str) -> bool {
     is_snake || is_camel
 }
 
+/// Measures how "English-like" a value is by counting common English bigrams
+/// found within consecutive alphabetic runs.  Natural language / prose scores
+/// above ~0.38; random-looking credentials score much lower.
+///
+/// Used as an additional filter for generic rules: if the "secret" is natural
+/// language masquerading as a value (e.g. `secret = "These-Are-Just-Words"`)
+/// we suppress the finding to avoid false positives.
+pub fn bigram_humanness(s: &str) -> f64 {
+    // Top-30 English letter bigrams (frequency-ordered)
+    const COMMON: &[[u8; 2]] = &[
+        *b"th", *b"he", *b"in", *b"er", *b"an", *b"re", *b"on", *b"en", *b"at", *b"es",
+        *b"ed", *b"te", *b"ti", *b"or", *b"st", *b"ar", *b"nd", *b"to", *b"nt", *b"is",
+        *b"of", *b"it", *b"al", *b"as", *b"ha", *b"ng", *b"io", *b"le", *b"se", *b"ou",
+    ];
+
+    // Only analyse consecutive alphabetic runs so digits / symbols don't dilute the score
+    let mut total = 0usize;
+    let mut hits = 0usize;
+    let lower = s.to_lowercase();
+    let bytes = lower.as_bytes();
+    let mut run_start = 0;
+    let mut in_run = false;
+
+    for (i, &b) in bytes.iter().enumerate() {
+        if b.is_ascii_alphabetic() {
+            if !in_run { run_start = i; in_run = true; }
+        } else if in_run {
+            let run = &bytes[run_start..i];
+            for w in run.windows(2) {
+                total += 1;
+                if COMMON.iter().any(|bg| bg == w) { hits += 1; }
+            }
+            in_run = false;
+        }
+    }
+    if in_run {
+        let run = &bytes[run_start..];
+        for w in run.windows(2) {
+            total += 1;
+            if COMMON.iter().any(|bg| bg == w) { hits += 1; }
+        }
+    }
+
+    if total == 0 { return 0.0; }
+    hits as f64 / total as f64
+}
+
 /// Number of distinct character classes present in `s` (uppercase / lowercase /
 /// digit / non-alphanumeric).  Real credentials almost always use at least two.
 pub fn char_class_diversity(s: &str) -> u8 {
@@ -398,6 +445,111 @@ fn build_rules() -> Vec<CompiledRule> {
             1,
             // Exclude template syntax (${ {{ <%) and function calls (parens/brackets).
             r#"(?m)^(?i)(?:PASSWORD|PASSWD|SECRET|API_KEY|APIKEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*([^\s#'"()\[\]{}<>$]{12,})"#,
+        ),
+        // ── Additional provider-specific rules ────────────────────────────────
+        (
+            "gitlab-pat",
+            "GitLab Personal Access Token",
+            "GitLab personal access token.",
+            Confidence::High,
+            1,
+            r"\b(glpat-[a-zA-Z0-9_\-]{20})\b",
+        ),
+        (
+            "digitalocean-pat",
+            "DigitalOcean Personal Access Token",
+            "DigitalOcean personal access token (v1).",
+            Confidence::High,
+            1,
+            r"\b(dop_v1_[a-f0-9]{64})\b",
+        ),
+        (
+            "docker-hub-token",
+            "Docker Hub Access Token",
+            "Docker Hub personal access token.",
+            Confidence::High,
+            1,
+            r"\b(dckr_pat_[a-zA-Z0-9_\-]{27})\b",
+        ),
+        (
+            "shopify-access-token",
+            "Shopify Access Token",
+            "Shopify private app access token.",
+            Confidence::High,
+            1,
+            r"\b(shpat_[a-f0-9]{32})\b",
+        ),
+        (
+            "linear-api-key",
+            "Linear API Key",
+            "Linear project management API key.",
+            Confidence::High,
+            1,
+            r"\b(lin_api_[a-zA-Z0-9]{40})\b",
+        ),
+        (
+            "planetscale-token",
+            "PlanetScale Service Token",
+            "PlanetScale database service token.",
+            Confidence::High,
+            1,
+            r"\b(pscale_tkn_[a-zA-Z0-9_\-]{43})\b",
+        ),
+        (
+            "doppler-token",
+            "Doppler Service Token",
+            "Doppler secrets manager service token.",
+            Confidence::High,
+            1,
+            r"(dp\.st\.[a-zA-Z0-9._\-]{20,})",
+        ),
+        (
+            "huggingface-token",
+            "Hugging Face API Token",
+            "Hugging Face user or write access token.",
+            Confidence::High,
+            1,
+            r"\b(hf_[a-zA-Z0-9]{34})\b",
+        ),
+        (
+            "databricks-token",
+            "Databricks Personal Access Token",
+            "Databricks workspace personal access token.",
+            Confidence::High,
+            1,
+            r"\b(dapi[a-f0-9]{32})\b",
+        ),
+        (
+            "twilio-account-sid",
+            "Twilio Account SID",
+            "Twilio account SID — always accompanies an auth token.",
+            Confidence::High,
+            1,
+            r"\b(AC[a-f0-9]{32})\b",
+        ),
+        (
+            "mailchimp-api-key",
+            "Mailchimp API Key",
+            "Mailchimp marketing API key.",
+            Confidence::High,
+            1,
+            r"\b([a-f0-9]{32}-us\d{1,2})\b",
+        ),
+        (
+            "stripe-restricted-key",
+            "Stripe Restricted Key",
+            "Stripe restricted API key (live mode).",
+            Confidence::High,
+            1,
+            r"\b(rk_live_[0-9a-zA-Z]{24,})\b",
+        ),
+        (
+            "azure-storage-account-key",
+            "Azure Storage Account Key",
+            "Azure storage account access key (base64-encoded 512-bit key).",
+            Confidence::High,
+            1,
+            r"AccountKey=([A-Za-z0-9+/]{86}==)",
         ),
     ];
 

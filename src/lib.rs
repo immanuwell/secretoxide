@@ -2,6 +2,7 @@ pub mod ignore;
 pub mod rules;
 pub mod scanner;
 pub mod types;
+pub mod validator;
 // git and output are CLI-only; not re-exported.
 
 use std::path::Path;

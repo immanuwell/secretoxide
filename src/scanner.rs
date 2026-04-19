@@ -5,8 +5,9 @@ use walkdir::WalkDir;
 
 use crate::{
     ignore::SecoxIgnore,
-    rules::{char_class_diversity, entropy, is_env_reference, is_placeholder, is_test_path, looks_like_code_identifier, redact, RULES},
+    rules::{bigram_humanness, char_class_diversity, entropy, is_env_reference, is_placeholder, is_test_path, looks_like_code_identifier, redact, RULES},
     types::{Confidence, Finding},
+    validator::{aws_key_entropy_ok, validate_github_token, validate_jwt},
 };
 
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
@@ -76,21 +77,60 @@ pub fn scan_content(
                 }
 
                 // Generic (non-structured) rules get extra semantic checks:
-                // identifier patterns, character diversity, and entropy.
+                // identifier patterns, character diversity, entropy, and bigram humanness.
                 if rule.meta.secret_group > 0 && rule.meta.confidence != Confidence::High {
                     if looks_like_code_identifier(secret)
                         || char_class_diversity(secret) < 2
                         || entropy(secret) < 3.2
+                        || bigram_humanness(secret) > 0.38
                     {
                         continue;
                     }
                 }
 
-                // In test/fixture files, generic rules are downgraded to Medium so
-                // developers can still see them but they don't block CI on HIGH.
-                // Structured rules (aws, github, stripe…) keep full confidence because
-                // even fake-looking test keys may be real and should be rotated.
-                let effective_confidence = if in_test_file
+                // Provider-level structural validation
+                // ─────────────────────────────────────
+                // AWS key IDs: the 16-char suffix must have realistic entropy.
+                // Suspiciously low entropy → docs/example key → skip.
+                if rule.meta.id == "aws-access-key-id" && !aws_key_entropy_ok(secret) {
+                    continue;
+                }
+
+                // JWTs: decode the base64url header and verify it contains an `alg`
+                // field.  A string that starts with `eyJ` but decodes to non-JSON is
+                // an opaque token or encoding artifact — not a JWT → skip.
+                if rule.meta.id == "jwt" {
+                    match validate_jwt(secret) {
+                        Some(false) | None => continue,
+                        Some(true) => {}
+                    }
+                }
+
+                // GitHub tokens carry a CRC-32 checksum in the last 6 chars.
+                // A mismatch means the token is fabricated or truncated — downgrade
+                // to Medium so it's still visible but doesn't block CI at HIGH.
+                let provider_confidence_override: Option<Confidence> =
+                    if matches!(
+                        rule.meta.id,
+                        "github-pat-classic"
+                            | "github-pat-fine-grained"
+                            | "github-oauth-token"
+                            | "github-app-token"
+                    ) {
+                        match validate_github_token(secret) {
+                            Some(true) => None,                    // checksum valid — keep rule confidence
+                            Some(false) => Some(Confidence::Medium), // fabricated/old → downgrade
+                            None => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                // In test/fixture files, generic rules are downgraded to Medium.
+                // Structured rules keep full confidence (rotated even if fake-looking).
+                let effective_confidence = if let Some(ov) = provider_confidence_override {
+                    ov
+                } else if in_test_file
                     && rule.meta.secret_group > 0
                     && rule.meta.confidence == Confidence::High
                 {
