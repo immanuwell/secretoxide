@@ -19,7 +19,7 @@ pub struct CompiledRule {
 /// Strings that indicate a value is a placeholder, not a real secret.
 static PLACEHOLDER_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?i)^(example|sample|test|dummy|placeholder|fake|mock|demo|default|your[_\-]?|insert[_\-]?|replace[_\-]?|enter[_\-]?|provide[_\-]?|use[_\-]?|set[_\-]?|my[_\-]?|xxx+|aaa+|bbb+|000+|111+|changeme|fixme|todo|<[^>]+>|\$\{[^}]*\}|\{\{[^}]*\}\}|<%[^%]*%>|\*+|\.\.\.+|n/?a|undefined|null|none|empty|blank)",
+        r"(?i)^(example|sample|test|dummy|placeholder|fake|mock|demo|default|your[_\-]?|insert[_\-]?|replace[_\-]?|enter[_\-]?|provide[_\-]?|use[_\-]?|set[_\-]?|my[_\-]?|xxx+|aaa+|bbb+|000+|111+|changeme|fixme|todo|password|passwd|pass|<[^>]+>|\$\{[^}]*\}|\{\{[^}]*\}\}|<%[^%]*%>|\*+|\.\.\.+|n/?a|undefined|null|none|empty|blank)",
     ).unwrap()
 });
 
@@ -550,6 +550,14 @@ fn build_rules() -> Vec<CompiledRule> {
             Confidence::High,
             1,
             r"AccountKey=([A-Za-z0-9+/]{86}==)",
+        ),
+        (
+            "url-basic-auth",
+            "Credentials in URL",
+            "Username and password embedded directly in a URL (basic auth).",
+            Confidence::High,
+            1,
+            r"[a-zA-Z][a-zA-Z0-9+.\-]*://([^:@\s<>{}]{1,100}:[^@\s<>{}]{1,100})@[a-zA-Z0-9]",
         ),
     ];
 

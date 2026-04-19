@@ -200,6 +200,16 @@ pub fn scan_content(
 
                 // Provider-level structural validation
                 // ─────────────────────────────────────
+                // URL basic-auth: check that the password component (after the first `:`)
+                // is not itself a placeholder word — catches `user:password@host` and
+                // `user:secret@host` that the whole-string placeholder check would miss.
+                if rule.meta.id == "url-basic-auth" {
+                    let pass = secret.splitn(2, ':').nth(1).unwrap_or("");
+                    if pass.is_empty() || is_placeholder(pass) {
+                        continue;
+                    }
+                }
+
                 // AWS key IDs: the 16-char suffix must have realistic entropy.
                 // Suspiciously low entropy → docs/example key → skip.
                 if rule.meta.id == "aws-access-key-id" && !aws_key_entropy_ok(secret) {
