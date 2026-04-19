@@ -12,17 +12,17 @@ use clap::Parser;
 use colored::Colorize;
 
 use cli::{Cli, Commands};
-use output::{print_banner, print_findings_text, print_summary};
-use types::Confidence;
+use output::{print_banner, print_findings, print_summary};
+use types::{Confidence, OutputFormat};
 
 fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { uninstall } => cmd_init(uninstall),
-        Commands::Scan { path, staged, git_history, no_fail, include_low } => {
-            cmd_scan(path, staged, git_history, no_fail, include_low)
+        Commands::Scan { path, staged, git_history, format, no_fail, include_low } => {
+            cmd_scan(path, staged, git_history, format, no_fail, include_low)
         }
-        Commands::Rules => cmd_rules(),
+        Commands::Rules { format } => cmd_rules(format),
     }
 }
 
@@ -64,14 +64,23 @@ fn cmd_init(uninstall: bool) {
     }
 }
 
-fn cmd_scan(path: PathBuf, staged: bool, git_history: bool, no_fail: bool, include_low: bool) {
+fn cmd_scan(
+    path: PathBuf,
+    staged: bool,
+    git_history: bool,
+    format: OutputFormat,
+    no_fail: bool,
+    include_low: bool,
+) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
 
-    let mode = if staged { "scanning staged files" }
-               else if git_history { "scanning git history" }
-               else { "scanning directory" };
-    print_banner(mode);
+    if format == OutputFormat::Text {
+        let mode = if staged { "scanning staged files" }
+                   else if git_history { "scanning git history" }
+                   else { "scanning directory" };
+        print_banner(mode);
+    }
 
     let mut findings = match if staged {
         scanner::scan_staged(&repo_root)
@@ -90,6 +99,7 @@ fn cmd_scan(path: PathBuf, staged: bool, git_history: bool, no_fail: bool, inclu
     if !include_low {
         findings.retain(|f| f.confidence != Confidence::Low);
     }
+
     findings.sort_by(|a, b| {
         a.confidence.cmp(&b.confidence)
             .then(a.file.cmp(&b.file))
@@ -99,24 +109,46 @@ fn cmd_scan(path: PathBuf, staged: bool, git_history: bool, no_fail: bool, inclu
         a.rule_id == b.rule_id && a.file == b.file && a.line_number == b.line_number
     });
 
-    print_findings_text(&findings);
-    print_summary(&findings);
+    print_findings(&findings, format);
+    print_summary(&findings, format);
 
     if !findings.is_empty() && !no_fail {
         process::exit(1);
     }
 }
 
-fn cmd_rules() {
+fn cmd_rules(format: OutputFormat) {
     use rules::RULES;
-    println!("\n  {} Built-in detection rules:\n", "secox".cyan().bold());
-    for r in RULES.iter() {
-        println!(
-            "  {} {}  {}",
-            r.meta.confidence.label().bold(),
-            r.meta.id.cyan(),
-            r.meta.name.dimmed(),
-        );
+    use serde_json::json;
+
+    match format {
+        OutputFormat::Json => {
+            let arr: Vec<_> = RULES
+                .iter()
+                .map(|r| json!({
+                    "id": r.meta.id,
+                    "name": r.meta.name,
+                    "description": r.meta.description,
+                    "confidence": match r.meta.confidence {
+                        Confidence::High => "HIGH",
+                        Confidence::Medium => "MEDIUM",
+                        Confidence::Low => "LOW",
+                    },
+                }))
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&arr).unwrap());
+        }
+        _ => {
+            println!("\n  {} Built-in detection rules:\n", "secox".cyan().bold());
+            for r in RULES.iter() {
+                println!(
+                    "  {} {}  {}",
+                    r.meta.confidence.label().bold(),
+                    r.meta.id.cyan(),
+                    r.meta.name.dimmed(),
+                );
+            }
+            println!("\n  {} rules total.\n", RULES.len().to_string().bold());
+        }
     }
-    println!("\n  {} rules total.\n", RULES.len().to_string().bold());
 }

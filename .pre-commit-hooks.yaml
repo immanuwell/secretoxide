@@ -1,0 +1,8 @@
+- id: secox
+  name: secox secret scanner
+  description: Detects API keys, tokens, passwords, and other credentials in staged files.
+  language: rust
+  entry: secox scan --staged
+  pass_filenames: false
+  stages: [pre-commit]
+  always_run: false

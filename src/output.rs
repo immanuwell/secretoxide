@@ -1,6 +1,7 @@
 use colored::Colorize;
+use serde_json::{json, Value};
 
-use crate::types::{Confidence, Finding};
+use crate::types::{Confidence, Finding, OutputFormat};
 
 pub fn print_banner(mode: &str) {
     println!(
@@ -19,7 +20,15 @@ fn confidence_color(c: &Confidence) -> colored::ColoredString {
     }
 }
 
-pub fn print_findings_text(findings: &[Finding]) {
+pub fn print_findings(findings: &[Finding], format: OutputFormat) {
+    match format {
+        OutputFormat::Text => print_findings_text(findings),
+        OutputFormat::Json => print_json(findings),
+        OutputFormat::Sarif => print_sarif(findings),
+    }
+}
+
+fn print_findings_text(findings: &[Finding]) {
     if findings.is_empty() {
         println!("{}", "  No secrets found.".green().bold());
         return;
@@ -72,20 +81,112 @@ pub fn print_findings_text(findings: &[Finding]) {
     println!();
 }
 
-pub fn print_summary(findings: &[Finding]) {
+fn print_json(findings: &[Finding]) {
+    let arr: Vec<Value> = findings
+        .iter()
+        .map(|f| {
+            json!({
+                "rule_id": f.rule_id,
+                "rule_name": f.rule_name,
+                "confidence": match f.confidence {
+                    Confidence::High => "HIGH",
+                    Confidence::Medium => "MEDIUM",
+                    Confidence::Low => "LOW",
+                },
+                "file": f.file.display().to_string(),
+                "line_number": f.line_number,
+                "line": f.line,
+                "secret_preview": f.secret_preview,
+                "commit": f.commit,
+                "commit_message": f.commit_message,
+            })
+        })
+        .collect();
+    println!("{}", serde_json::to_string_pretty(&arr).unwrap());
+}
+
+fn print_sarif(findings: &[Finding]) {
+    use crate::rules::RULES;
+
+    let rules_sarif: Vec<Value> = RULES
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.meta.id,
+                "name": r.meta.name,
+                "shortDescription": { "text": r.meta.description },
+                "defaultConfiguration": {
+                    "level": match r.meta.confidence {
+                        Confidence::High => "error",
+                        Confidence::Medium => "warning",
+                        Confidence::Low => "note",
+                    }
+                }
+            })
+        })
+        .collect();
+
+    let results: Vec<Value> = findings
+        .iter()
+        .map(|f| {
+            json!({
+                "ruleId": f.rule_id,
+                "level": match f.confidence {
+                    Confidence::High => "error",
+                    Confidence::Medium => "warning",
+                    Confidence::Low => "note",
+                },
+                "message": {
+                    "text": format!("{} detected: {}", f.rule_name, f.secret_preview)
+                },
+                "locations": [{
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": f.file.display().to_string(),
+                            "uriBaseId": "%SRCROOT%"
+                        },
+                        "region": {
+                            "startLine": f.line_number,
+                            "snippet": { "text": f.line }
+                        }
+                    }
+                }]
+            })
+        })
+        .collect();
+
+    let sarif = json!({
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {
+                "driver": {
+                    "name": "secox",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "rules": rules_sarif
+                }
+            },
+            "results": results
+        }]
+    });
+
+    println!("{}", serde_json::to_string_pretty(&sarif).unwrap());
+}
+
+pub fn print_summary(findings: &[Finding], format: OutputFormat) {
+    if format != OutputFormat::Text {
+        return;
+    }
+
     let high = findings.iter().filter(|f| f.confidence == Confidence::High).count();
     let med = findings.iter().filter(|f| f.confidence == Confidence::Medium).count();
     let low = findings.iter().filter(|f| f.confidence == Confidence::Low).count();
-
     let files_affected: std::collections::HashSet<_> = findings.iter().map(|f| &f.file).collect();
 
     println!("{}", "─".repeat(60).dimmed());
 
     if findings.is_empty() {
-        println!(
-            "  {} No secrets found.",
-            "✓".green().bold(),
-        );
+        println!("  {} No secrets found.", "✓".green().bold());
     } else {
         println!(
             "  {} Found {} secret(s) in {} file(s):",
@@ -97,6 +198,5 @@ pub fn print_summary(findings: &[Finding]) {
         if med > 0  { println!("    {} medium confidence", med.to_string().yellow()); }
         if low > 0  { println!("    {} low confidence", low.to_string().dimmed()); }
     }
-
     println!();
 }

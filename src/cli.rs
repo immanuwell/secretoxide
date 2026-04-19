@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::types::OutputFormat;
+
 #[derive(Parser)]
 #[command(
     name = "secox",
@@ -37,6 +39,10 @@ pub enum Commands {
         #[arg(long, conflicts_with = "staged")]
         git_history: bool,
 
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: OutputFormat,
+
         /// Exit 0 even when secrets are found (useful in advisory CI mode).
         #[arg(long)]
         no_fail: bool,
@@ -47,5 +53,9 @@ pub enum Commands {
     },
 
     /// List all built-in detection rules.
-    Rules,
+    Rules {
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: OutputFormat,
+    },
 }

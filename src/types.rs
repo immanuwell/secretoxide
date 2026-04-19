@@ -29,3 +29,10 @@ pub struct Finding {
     pub commit: Option<String>,
     pub commit_message: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutputFormat {
+    Text,
+    Json,
+    Sarif,
+}

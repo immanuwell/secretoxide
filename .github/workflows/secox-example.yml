@@ -1,0 +1,43 @@
+# Example: Add this workflow to YOUR repository to scan it with secox.
+# Copy this file to .github/workflows/secox.yml in your project.
+
+name: Secret Scan
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scan:
+    name: secox secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required for --git-history
+
+      - name: Install secox
+        run: cargo install secox
+
+      # Scan the working tree; fail the job if any HIGH/MED secrets are found.
+      - name: Scan working tree
+        run: secox scan --format sarif > secox-results.sarif
+
+      # Upload results to the GitHub Security tab (requires repo admin perms).
+      - name: Upload SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: secox-results.sarif
+          category: secox
+
+      # Optionally scan the full git history (adds ~30s on a typical repo).
+      - name: Scan git history
+        run: secox scan --git-history --format json > secox-history.json || true
+
+      - name: Upload history report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secox-history
+          path: secox-history.json
