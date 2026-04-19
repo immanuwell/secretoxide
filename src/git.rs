@@ -64,9 +64,17 @@ if command -v secox >/dev/null 2>&1; then
     status=$?
     if [ $status -ne 0 ]; then
         echo ""
-        echo "secox: commit blocked. Fix the above findings before committing."
-        echo "       To suppress a false positive, add  # secox:ignore  to that line."
-        echo "       To skip this check (NOT recommended): git commit --no-verify"
+        echo "secox: commit blocked — secret(s) detected in staged files."
+        echo ""
+        echo "  To triage interactively (allow false positives with one keypress):"
+        echo "    secox resolve"
+        echo ""
+        echo "  To suppress a single line, append a comment:"
+        echo "    # secox:allow   (Python / YAML / shell)"
+        echo "    // secox:allow  (JS / Go / Java / Rust ...)"
+        echo ""
+        echo "  To skip this check entirely (NOT recommended):"
+        echo "    git commit --no-verify"
         exit 1
     fi
 else

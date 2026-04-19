@@ -7,11 +7,15 @@ use colored::Colorize;
 use secox_lib::{ignore::SecoxIgnore, scanner, types::Finding};
 
 pub fn run(repo_root: &Path, ignore: &SecoxIgnore, staged: bool) -> Result<()> {
-    let findings = if staged {
+    let mut findings = if staged {
         scanner::scan_staged(repo_root, ignore)?
     } else {
         scanner::scan_directory(repo_root, ignore, repo_root)?
     };
+
+    // Deduplicate: if the same line triggered multiple rules, prompt once.
+    findings.sort_by(|a, b| a.file.cmp(&b.file).then(a.line_number.cmp(&b.line_number)));
+    findings.dedup_by(|a, b| a.file == b.file && a.line_number == b.line_number);
 
     if findings.is_empty() {
         println!("\n  {} No findings to resolve.\n", "✓".green().bold());
