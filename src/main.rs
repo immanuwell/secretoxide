@@ -135,17 +135,26 @@ fn cmd_scan(
         print_banner(mode);
     }
 
-    let mut findings = match if staged {
-        scanner::scan_staged(&repo_root, &ignore)
+    let mut findings = if staged {
+        match scanner::scan_staged(&repo_root, &ignore) {
+            Ok(f) => f,
+            Err(e) => { eprintln!("{} {e}", "error:".red().bold()); process::exit(2); }
+        }
     } else if git_history {
-        git::scan_history(&repo_root, &ignore)
+        // History scan + working-tree scan combined: history catches removed secrets,
+        // working tree catches staged/untracked files not yet in any commit.
+        let mut f = match git::scan_history(&repo_root, &ignore) {
+            Ok(f) => f,
+            Err(e) => { eprintln!("{} {e}", "error:".red().bold()); process::exit(2); }
+        };
+        if let Ok(mut wt) = scanner::scan_directory(&path, &ignore, &repo_root) {
+            f.append(&mut wt);
+        }
+        f
     } else {
-        scanner::scan_directory(&path, &ignore, &repo_root)
-    } {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("{} {e}", "error:".red().bold());
-            process::exit(2);
+        match scanner::scan_directory(&path, &ignore, &repo_root) {
+            Ok(f) => f,
+            Err(e) => { eprintln!("{} {e}", "error:".red().bold()); process::exit(2); }
         }
     };
 
@@ -161,6 +170,26 @@ fn cmd_scan(
     findings.dedup_by(|a, b| {
         a.rule_id == b.rule_id && a.file == b.file && a.line_number == b.line_number
     });
+
+    if git_history {
+        // History and working-tree scans can surface the same secret via different
+        // path representations. Deduplicate by (rule_id, secret_preview), keeping
+        // the finding that has commit attribution (richer context).
+        findings.sort_by(|a, b| {
+            a.confidence.cmp(&b.confidence)
+                .then(b.commit.is_some().cmp(&a.commit.is_some())) // commit findings first
+                .then(a.file.cmp(&b.file))
+                .then(a.line_number.cmp(&b.line_number))
+        });
+        let mut seen = std::collections::HashSet::new();
+        findings.retain(|f| seen.insert((f.rule_id, f.secret_preview.clone())));
+        // Re-sort for consistent display order after dedup.
+        findings.sort_by(|a, b| {
+            a.confidence.cmp(&b.confidence)
+                .then(a.file.cmp(&b.file))
+                .then(a.line_number.cmp(&b.line_number))
+        });
+    }
 
     // Suppress findings that are already in the baseline.
     let suppressed_count = if let Some(bl) = baseline::Baseline::load(&repo_root) {

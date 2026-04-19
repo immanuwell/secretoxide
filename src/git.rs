@@ -243,7 +243,7 @@ pub fn scan_history(repo_root: &Path, ignore: &SecoxIgnore) -> Result<Vec<Findin
         eprint!("\r  Scanning commit {}/{total} {}...", i + 1, &hash[..8]);
 
         let diff = match Command::new("git")
-            .args(["diff-tree", "--no-commit-id", "-r", "-p", hash])
+            .args(["diff-tree", "--root", "--no-commit-id", "-r", "-p", hash])
             .current_dir(repo_root)
             .output()
         {

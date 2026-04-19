@@ -36,6 +36,118 @@ fn is_binary(buf: &[u8]) -> bool {
     buf.iter().take(8192).any(|&b| b == 0)
 }
 
+fn is_archive_extension(path: &Path) -> bool {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => matches!(ext.to_ascii_lowercase().as_str(), "apk" | "jar" | "aar"),
+        None => false,
+    }
+}
+
+// Entry extensions inside an archive that are never worth scanning.
+const SKIP_ARCHIVE_ENTRY_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "webp", "ico", "bmp",
+    "ttf", "otf", "woff", "woff2", "eot",
+    "mp3", "mp4", "ogg", "wav",
+    "so", "dylib", "dll",
+];
+
+fn skip_archive_entry(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    if let Some(ext) = std::path::Path::new(&lower).extension().and_then(|e| e.to_str()) {
+        if SKIP_ARCHIVE_ENTRY_EXTENSIONS.contains(&ext) {
+            return true;
+        }
+    }
+    // META-INF signatures are boilerplate — skip to avoid noise.
+    lower.starts_with("meta-inf/") && (lower.ends_with(".sf") || lower.ends_with(".rsa") || lower.ends_with(".dsa") || lower.ends_with("manifest.mf"))
+}
+
+/// Extract runs of printable ASCII (≥ `min_len` chars), one per line.
+/// Used for binary archive entries (.dex, .arsc, …) — equivalent to strings(1).
+fn extract_printable_strings(data: &[u8], min_len: usize) -> String {
+    let mut lines: Vec<&[u8]> = Vec::new();
+    let mut start: Option<usize> = None;
+
+    for (i, &b) in data.iter().enumerate() {
+        if b >= 0x20 && b <= 0x7e {
+            if start.is_none() {
+                start = Some(i);
+            }
+        } else {
+            if let Some(s) = start.take() {
+                let run = &data[s..i];
+                if run.len() >= min_len {
+                    lines.push(run);
+                }
+            }
+        }
+    }
+    if let Some(s) = start {
+        let run = &data[s..];
+        if run.len() >= min_len {
+            lines.push(run);
+        }
+    }
+
+    lines
+        .iter()
+        .filter_map(|r| std::str::from_utf8(r).ok())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn scan_archive(path: &Path) -> Result<Vec<Finding>> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(path)?;
+    let mut archive = match zip::ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(_) => return Ok(vec![]),   // not a valid ZIP, ignore
+    };
+
+    const MAX_ENTRY_BYTES: u64 = 50 * 1024 * 1024;
+    let mut findings = Vec::new();
+
+    for i in 0..archive.len() {
+        let mut entry = match archive.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        if entry.is_dir() || entry.size() > MAX_ENTRY_BYTES {
+            continue;
+        }
+
+        let entry_name = entry.name().to_string();
+        if skip_archive_entry(&entry_name) {
+            continue;
+        }
+
+        let mut buf = Vec::new();
+        if entry.read_to_end(&mut buf).is_err() {
+            continue;
+        }
+
+        // Build a display path that makes the archive entry visible in output.
+        let display_path = PathBuf::from(format!("{}::{}", path.display(), entry_name));
+
+        let content = if is_binary(&buf) {
+            extract_printable_strings(&buf, 8)
+        } else {
+            String::from_utf8_lossy(&buf).into_owned()
+        };
+
+        if content.is_empty() {
+            continue;
+        }
+
+        let mut ef = scan_content(&content, &display_path, None, None);
+        findings.append(&mut ef);
+    }
+
+    Ok(findings)
+}
+
 // ── Sensitive-filename detection ──────────────────────────────────────────────
 //
 // Some files are dangerous to commit regardless of their content — private keys,
@@ -286,6 +398,10 @@ pub fn scan_file(path: &Path) -> Result<Vec<Finding>> {
     let metadata = std::fs::metadata(path)?;
     if metadata.len() > MAX_FILE_SIZE {
         return Ok(vec![]);
+    }
+
+    if is_archive_extension(path) {
+        return scan_archive(path);
     }
 
     let bytes = std::fs::read(path)?;

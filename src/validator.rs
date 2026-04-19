@@ -69,7 +69,7 @@ pub fn validate_github_token(token: &str) -> Option<bool> {
 pub fn aws_key_entropy_ok(key: &str) -> bool {
     // Only check the random suffix (everything after the 4-char type prefix + AKIA)
     let suffix = if key.len() >= 4 { &key[4..] } else { key };
-    crate::rules::entropy(suffix) > 3.2
+    crate::rules::entropy(suffix) > 3.0
 }
 
 // ── JWT header structural validation ─────────────────────────────────────────
