@@ -1,4 +1,5 @@
 mod cli;
+mod git;
 mod output;
 mod rules;
 mod scanner;
@@ -17,11 +18,47 @@ use types::Confidence;
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { uninstall: _ } => {
-            println!("secox init — not yet implemented");
-        }
+        Commands::Init { uninstall } => cmd_init(uninstall),
         Commands::Scan { path, staged: _, no_fail } => cmd_scan(path, no_fail),
         Commands::Rules => cmd_rules(),
+    }
+}
+
+fn cmd_init(uninstall: bool) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let root = match git::find_git_root(&cwd) {
+        Some(r) => r,
+        None => {
+            eprintln!("{} Not a git repository.", "error:".red().bold());
+            process::exit(1);
+        }
+    };
+
+    if uninstall {
+        match git::uninstall_hook(&root) {
+            Ok(_) => println!("{} Hook removed.", "secox:".cyan().bold()),
+            Err(e) => { eprintln!("{} {e}", "error:".red().bold()); process::exit(1); }
+        }
+        return;
+    }
+
+    if git::uses_precommit_framework(&root) {
+        println!("{}", "  Detected pre-commit framework (.pre-commit-config.yaml).".yellow());
+        println!("  Add secox to your config:\n");
+        println!("  {}", "  repos:\n    - repo: https://github.com/yourusername/secretoxide\n      rev: v0.1.0\n      hooks:\n        - id: secox".cyan());
+        return;
+    }
+
+    match git::install_hook(&root) {
+        Ok(_) => {
+            println!(
+                "\n  {} Pre-commit hook installed at {}",
+                "✓".green().bold(),
+                root.join(".git/hooks/pre-commit").display().to_string().cyan()
+            );
+            println!("    secox will now scan staged files before every commit.\n");
+        }
+        Err(e) => { eprintln!("{} Failed to install hook: {e}", "error:".red().bold()); process::exit(1); }
     }
 }
 
