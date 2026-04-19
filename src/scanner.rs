@@ -12,7 +12,9 @@ use crate::{
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 const INLINE_IGNORE: &str = "secox:ignore";
+const INLINE_ALLOW: &str = "secox:allow";
 const FILE_IGNORE: &str = "secox:ignore-file";
+const FILE_ALLOW: &str = "secox:allow-file";
 
 const SKIP_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "bmp", "ico", "svg", "webp",
@@ -39,14 +41,14 @@ pub fn scan_content(
     commit: Option<&str>,
     commit_message: Option<&str>,
 ) -> Vec<Finding> {
-    if content.contains(FILE_IGNORE) {
+    if content.contains(FILE_IGNORE) || content.contains(FILE_ALLOW) {
         return vec![];
     }
 
     let mut findings = Vec::new();
 
     for (line_idx, line) in content.lines().enumerate() {
-        if line.contains(INLINE_IGNORE) {
+        if line.contains(INLINE_IGNORE) || line.contains(INLINE_ALLOW) {
             continue;
         }
 

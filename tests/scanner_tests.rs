@@ -124,6 +124,22 @@ fn file_ignore_suppresses_all() {
 }
 
 #[test]
+fn inline_allow_suppresses_finding() {
+    let key = t(&["sk-aBcDeFgHiJk", "LmNoPqRsTuVwXyZ123456789012345678901"]);
+    let src = format!("OPENAI_API_KEY={key}  // secox:allow");
+    let ids = findings_for(&src);
+    assert!(ids.is_empty(), "expected no findings but got {ids:?}");
+}
+
+#[test]
+fn file_allow_suppresses_all() {
+    let key = t(&["sk-aBcDeFgHiJk", "LmNoPqRsTuVwXyZ123456789012345678901"]);
+    let src = format!("# secox:allow-file\nOPENAI_API_KEY={key}");
+    let ids = findings_for(&src);
+    assert!(ids.is_empty(), "expected no findings but got {ids:?}");
+}
+
+#[test]
 fn jwt_detected() {
     // A syntactically valid JWT-shaped string.
     let src = "token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
