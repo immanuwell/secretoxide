@@ -19,7 +19,7 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { uninstall } => cmd_init(uninstall),
-        Commands::Scan { path, staged: _, no_fail } => cmd_scan(path, no_fail),
+        Commands::Scan { path, staged, no_fail } => cmd_scan(path, staged, no_fail),
         Commands::Rules => cmd_rules(),
     }
 }
@@ -62,10 +62,18 @@ fn cmd_init(uninstall: bool) {
     }
 }
 
-fn cmd_scan(path: PathBuf, no_fail: bool) {
-    print_banner("scanning directory");
+fn cmd_scan(path: PathBuf, staged: bool, no_fail: bool) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
 
-    let mut findings = match scanner::scan_directory(&path) {
+    let mode = if staged { "scanning staged files" } else { "scanning directory" };
+    print_banner(mode);
+
+    let mut findings = match if staged {
+        scanner::scan_staged(&repo_root)
+    } else {
+        scanner::scan_directory(&path)
+    } {
         Ok(f) => f,
         Err(e) => {
             eprintln!("{} {e}", "error:".red().bold());

@@ -101,8 +101,35 @@ pub fn scan_file(path: &Path) -> Result<Vec<Finding>> {
     Ok(scan_content(&content, path, None, None))
 }
 
-pub fn scan_staged(_repo_root: &Path) -> Result<Vec<Finding>> {
-    Ok(vec![]) // TODO: implement
+pub fn scan_staged(repo_root: &Path) -> Result<Vec<Finding>> {
+    use std::process::Command;
+
+    let output = Command::new("git")
+        .args(["diff", "--cached", "--name-only", "--diff-filter=ACM"])
+        .current_dir(repo_root)
+        .output()?;
+
+    if !output.status.success() {
+        anyhow::bail!("git diff failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    let files: Vec<PathBuf> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| repo_root.join(l))
+        .collect();
+
+    let mut findings = Vec::new();
+    for path in &files {
+        if path.exists() {
+            match scan_file(path) {
+                Ok(mut f) => findings.append(&mut f),
+                Err(_) => {}
+            }
+        }
+    }
+
+    Ok(findings)
 }
 
 fn is_lock_file(path: &Path) -> bool {
