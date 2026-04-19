@@ -29,7 +29,7 @@ fn main() {
         Commands::Scan { path, staged, git_history, format, no_fail, include_low, ignore } => {
             cmd_scan(path, staged, git_history, format, no_fail, include_low, ignore)
         }
-        Commands::Resolve { staged } => cmd_resolve(staged),
+        Commands::Resolve { staged, no_staged } => cmd_resolve(staged && !no_staged),
         Commands::Rules { format } => cmd_rules(format),
     }
 }
