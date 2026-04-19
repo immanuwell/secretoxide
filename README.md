@@ -11,9 +11,54 @@ cargo install secox
 secox init   # drop a pre-commit hook, done
 ```
 
+## all commands
+
+```
+Quick start:
+  secox init          # install pre-commit hook
+  secox scan          # scan current directory
+  secox scan --staged # scan only staged files
+
+Usage: secox <COMMAND>
+
+Commands:
+  init      Install the secox pre-commit hook
+  scan      Scan for secrets in files or git history
+  resolve   Interactively triage findings: rotate real secrets, allow false positives
+  rules     List all built-in detection rules
+  baseline  Manage the .secox-baseline.json file for legacy repos
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Examples:
+  secox init                              install pre-commit hook for this repo
+  secox init --global                     install once for all repos (core.hooksPath)
+  secox scan                              scan the current directory
+  secox scan --staged                     scan only what is staged right now
+  secox scan --git-history                audit the full commit history
+  secox scan --include-low                widen the net (more noise, fewer misses)
+  secox scan --format json | jq .         pipe findings to jq
+  secox scan --ignore "*.snap"            skip snapshot files
+  secox scan --ignore vendor/             skip vendored dependencies
+  secox resolve                           triage blocked-commit findings interactively
+  secox rules                             list all built-in detection rules
+
+Suppress a single finding inline:
+  api_key = "sk-live-..."  # secox:allow
+
+Suppress all findings in a file — add to the top:
+  # secox:allow-file
+```
+
 ---
 
-## When a commit gets blocked
+## when a commit gets blocked
 
 Run this:
 
@@ -31,7 +76,7 @@ For each finding you pick **r**, **a**, or **s**:
 
 ---
 
-## Catches dangerous files before you even open them
+## catches dangerous files before you even open them
 
 secox flags sensitive filenames the moment they hit the staging area — no regex needed, no content to scan:
 
@@ -43,7 +88,7 @@ Committing `id_rsa` is almost never intentional. Now it's blocked at `git commit
 
 ---
 
-## Onboarding an existing repo without losing your mind
+## onboarding an existing repo without losing your mind
 
 The first scan on a legacy codebase usually explodes with hundreds of stale findings. That's why people disable hooks. secox has a baseline:
 
@@ -62,7 +107,7 @@ Commit the baseline file and the whole team shares the same suppression list.
 
 ---
 
-## Fewer false positives than gitleaks / ripsecrets
+## fewer false positives than gitleaks / ripsecrets
 
 Three layers before anything fires:
 
@@ -76,7 +121,7 @@ Three layers before anything fires:
 
 ---
 
-## Suppress findings
+## suppress findings
 
 One line:
 ```python
@@ -97,7 +142,7 @@ tests/fixtures/
 
 ---
 
-## Everything else
+## everything else
 
 ```bash
 secox scan --git-history        # audit every past commit (slow, worth it once)
@@ -108,3 +153,4 @@ secox init --global             # one hook for every repo on the machine
 ```
 
 `secox <command> --help` has examples for everything.
+
