@@ -7,7 +7,18 @@ Finds secrets in your code. Then actually helps you fix them.
 Every other scanner prints a list and walks away. secox stays — shows you the revocation steps, rewrites the file, checks git history, and if the damage is already in old commits, hands you the exact command to fix that too.
 
 ```bash
+# one-liner
+curl -fsL ewry.net/secox/install.sh | sh
+
+# homebrew
+brew tap immanuwell/secox https://github.com/immanuwell/homebrew-secox.git
+brew install immanuwell/secox/secox
+
+# cargo
 cargo install secox
+```
+
+```bash
 secox init   # drop a pre-commit hook, done
 ```
 
