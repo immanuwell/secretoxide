@@ -28,7 +28,7 @@ secox init   # drop a pre-commit hook, done
 
 ```
 Quick start:
-  secox init          # install pre-commit hook
+  secox init          # install pre-commit hook (and to delete - secox init --uninstall)
   secox scan          # scan current directory
   secox scan --staged # scan only staged files
 
