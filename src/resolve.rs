@@ -6,6 +6,8 @@ use colored::Colorize;
 
 use secox_lib::{ignore::SecoxIgnore, scanner, types::Finding};
 
+use crate::rotation;
+
 pub fn run(repo_root: &Path, ignore: &SecoxIgnore, staged: bool) -> Result<()> {
     let mut findings = if staged {
         scanner::scan_staged(repo_root, ignore)?
@@ -23,37 +25,50 @@ pub fn run(repo_root: &Path, ignore: &SecoxIgnore, staged: bool) -> Result<()> {
     }
 
     println!(
-        "\n  {} {} finding(s) to review — {} to allow, {} or Enter to keep blocking.\n",
+        "\n  {} {} finding(s) to review.\n",
         "secox:".cyan().bold(),
         findings.len().to_string().yellow().bold(),
-        "y".green().bold(),
-        "n".red(),
     );
 
+    let mut rotated = 0usize;
     let mut allowed = 0usize;
     let mut blocking = 0usize;
 
     for finding in &findings {
         print_finding(finding);
-        if prompt_yes_no()? {
-            inject_allow(&finding.file, finding.line_number)?;
-            println!("  {} Allowed — secox:allow appended to line {}.\n", "✓".green(), finding.line_number);
-            allowed += 1;
-        } else {
-            println!("  {} Skipped.\n", "–".dimmed());
-            blocking += 1;
+
+        match prompt_action()? {
+            Action::Rotate => {
+                show_rotation_guide(finding);
+                rotated += 1;
+            }
+            Action::Allow => {
+                inject_allow(&finding.file, finding.line_number)?;
+                println!(
+                    "  {} Marked as allowed — secox:allow added to line {}.\n",
+                    "✓".green(),
+                    finding.line_number
+                );
+                allowed += 1;
+            }
+            Action::Skip => {
+                println!("  {} Skipped — still blocking.\n", "–".dimmed());
+                blocking += 1;
+            }
         }
     }
 
     println!("{}", "─".repeat(60).dimmed());
-    println!(
-        "  Allowed: {}   Still blocking: {}",
-        allowed.to_string().green().bold(),
-        blocking.to_string().yellow().bold(),
-    );
+    if rotated > 0 {
+        println!("  Rotating: {}", rotated.to_string().cyan().bold());
+    }
+    if allowed > 0 {
+        println!("  Allowed:  {}", allowed.to_string().green().bold());
+    }
     if blocking > 0 {
+        println!("  Blocking: {}", blocking.to_string().yellow().bold());
         println!(
-            "\n  Fix or rotate the remaining secret(s), then run {}.\n",
+            "\n  Rotate or allow the remaining finding(s), then run {}.\n",
             "git commit".cyan()
         );
     } else {
@@ -62,6 +77,29 @@ pub fn run(repo_root: &Path, ignore: &SecoxIgnore, staged: bool) -> Result<()> {
 
     Ok(())
 }
+
+// ── actions ───────────────────────────────────────────────────────────────────
+
+enum Action {
+    Rotate,
+    Allow,
+    Skip,
+}
+
+fn show_rotation_guide(finding: &Finding) {
+    match rotation::guide_for(finding.rule_id) {
+        Some(guide) => rotation::print_guide(guide),
+        None => {
+            println!(
+                "\n  {} No specific rotation guide for '{}' — check your provider's security settings.\n",
+                "!".yellow(),
+                finding.rule_id
+            );
+        }
+    }
+}
+
+// ── prompt helpers ────────────────────────────────────────────────────────────
 
 fn print_finding(f: &Finding) {
     let conf = match f.confidence {
@@ -82,14 +120,27 @@ fn print_finding(f: &Finding) {
         f.line.clone()
     };
     println!("     {} {}", "Line:".dimmed(), line_display.dimmed());
-    print!("  Allow this finding? [y/N] ");
-    let _ = io::stdout().flush();
 }
 
-fn prompt_yes_no() -> Result<bool> {
-    let mut buf = String::new();
-    io::stdin().read_line(&mut buf)?;
-    Ok(matches!(buf.trim().to_lowercase().as_str(), "y" | "yes"))
+fn prompt_action() -> Result<Action> {
+    loop {
+        print!(
+            "\n  [{}]otate  [{}]llow false positive  [{}]kip  ",
+            "r".cyan().bold(),
+            "a".green().bold(),
+            "s".dimmed(),
+        );
+        io::stdout().flush()?;
+
+        let mut buf = String::new();
+        io::stdin().read_line(&mut buf)?;
+        match buf.trim().to_lowercase().as_str() {
+            "r" | "rotate" => return Ok(Action::Rotate),
+            "a" | "allow" => return Ok(Action::Allow),
+            "s" | "skip" | "" => return Ok(Action::Skip),
+            _ => println!("  Please enter r, a, or s."),
+        }
+    }
 }
 
 fn inject_allow(path: &Path, line_number: usize) -> Result<()> {
