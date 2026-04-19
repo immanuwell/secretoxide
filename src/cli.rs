@@ -172,4 +172,28 @@ pub enum Commands {
         #[arg(long, value_enum, default_value = "text")]
         format: OutputFormat,
     },
+
+    /// Manage the .secox-baseline.json file for legacy repos.
+    ///
+    /// The baseline lets you onboard an existing codebase without being overwhelmed
+    /// by pre-existing findings. Once baselined, only NEW secrets block commits.
+    #[command(
+        after_help = concat!(
+            "Examples:\n",
+            "  secox baseline            snapshot all current findings into .secox-baseline.json\n",
+            "  secox baseline --update   refresh the baseline after rotating old secrets\n",
+            "\n",
+            "Workflow for onboarding an existing repo:\n",
+            "  1. secox baseline          create the initial baseline\n",
+            "  2. git add .secox-baseline.json && git commit\n",
+            "  3. secox scan              now only findings NOT in the baseline are shown\n",
+            "  4. Work through old findings over time with `secox resolve`\n",
+            "  5. secox baseline --update after each batch you clean up",
+        )
+    )]
+    Baseline {
+        /// Overwrite an existing baseline (default: refuse if one already exists).
+        #[arg(long)]
+        update: bool,
+    },
 }

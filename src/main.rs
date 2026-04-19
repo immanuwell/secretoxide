@@ -1,3 +1,4 @@
+mod baseline;
 mod cli;
 mod git;
 mod output;
@@ -31,6 +32,7 @@ fn main() {
         }
         Commands::Resolve { staged, no_staged } => cmd_resolve(staged && !no_staged),
         Commands::Rules { format } => cmd_rules(format),
+        Commands::Baseline { update } => cmd_baseline(update),
     }
 }
 
@@ -160,8 +162,26 @@ fn cmd_scan(
         a.rule_id == b.rule_id && a.file == b.file && a.line_number == b.line_number
     });
 
+    // Suppress findings that are already in the baseline.
+    let suppressed_count = if let Some(bl) = baseline::Baseline::load(&repo_root) {
+        let (kept, n) = bl.suppress(findings, &repo_root);
+        findings = kept;
+        n
+    } else {
+        0
+    };
+
     print_findings(&findings, format);
     print_summary(&findings, format);
+
+    if suppressed_count > 0 && format == OutputFormat::Text {
+        println!(
+            "  {} {} known finding(s) suppressed by baseline — run {} to refresh.\n",
+            "ℹ".cyan(),
+            suppressed_count,
+            "secox baseline --update".cyan(),
+        );
+    }
 
     if !findings.is_empty() && !no_fail {
         process::exit(1);
@@ -176,6 +196,67 @@ fn cmd_resolve(staged: bool) {
     if let Err(e) = resolve::run(&repo_root, &ignore, staged) {
         eprintln!("{} {e}", "error:".red().bold());
         process::exit(2);
+    }
+}
+
+fn cmd_baseline(update: bool) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
+    let ignore = SecoxIgnore::load(&repo_root, &[]);
+
+    let baseline_path = baseline::baseline_path(&repo_root);
+
+    if baseline_path.exists() && !update {
+        eprintln!(
+            "{} {} already exists. Use {} to overwrite it.",
+            "error:".red().bold(),
+            baseline_path.display().to_string().cyan(),
+            "secox baseline --update".cyan(),
+        );
+        process::exit(1);
+    }
+
+    println!("\n  {} Scanning for current findings to baseline…\n", "secox:".cyan().bold());
+
+    let findings = match scanner::scan_directory(&repo_root, &ignore, &repo_root) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            process::exit(2);
+        }
+    };
+
+    // Only baseline Medium and High — Low findings are too noisy to track.
+    let findings: Vec<_> = findings
+        .into_iter()
+        .filter(|f| f.confidence != Confidence::Low)
+        .collect();
+
+    let count = findings.len();
+    let entries = baseline::findings_to_entries(&findings, &repo_root);
+    let bl = baseline::Baseline::new(entries);
+
+    if let Err(e) = bl.save(&repo_root) {
+        eprintln!("{} Failed to write baseline: {e}", "error:".red().bold());
+        process::exit(2);
+    }
+
+    println!(
+        "  {} Baselined {} finding(s) → {}\n",
+        "✓".green().bold(),
+        count.to_string().yellow().bold(),
+        baseline_path.display().to_string().cyan(),
+    );
+
+    if count > 0 {
+        println!(
+            "  Commit {} to share the baseline with your team.\n  \
+             Future {} runs will only show findings NOT in this baseline.\n",
+            ".secox-baseline.json".cyan(),
+            "secox scan".cyan(),
+        );
+    } else {
+        println!("  Clean repo — baseline is empty. Nothing will be suppressed.\n");
     }
 }
 

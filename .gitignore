@@ -1,1 +1,5 @@
 /target
+
+# secox baseline — commit this to share suppressed findings with your team
+# or add it here to keep it local-only
+# .secox-baseline.json
