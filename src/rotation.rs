@@ -250,6 +250,31 @@ static GUIDES: &[RotationGuide] = &[
         ],
         env_var_hint: "TWILIO_AUTH_TOKEN",
     },
+    RotationGuide {
+        rule_ids: &["sensitive-file-env"],
+        provider: "Environment file accidentally committed",
+        revoke_url: "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository",
+        steps: &[
+            "Stop tracking the file: git rm --cached <file>",
+            "Add it to .gitignore so it never sneaks back in",
+            "Rotate any credentials the file contained (assume they are compromised)",
+            "If the file was ever pushed: rewrite history with git filter-repo or BFG",
+        ],
+        env_var_hint: "SECRET",
+    },
+    RotationGuide {
+        rule_ids: &["sensitive-file-key", "sensitive-file-credentials"],
+        provider: "Private key / credential file accidentally committed",
+        revoke_url: "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository",
+        steps: &[
+            "Stop tracking the file: git rm --cached <file>",
+            "Add it to .gitignore",
+            "Generate a new key pair — the exposed one must be considered compromised",
+            "Replace the old public key in every authorized_keys / service that trusted it",
+            "If the file was ever pushed: rewrite history with git filter-repo or BFG",
+        ],
+        env_var_hint: "PRIVATE_KEY",
+    },
 ];
 
 pub fn guide_for(rule_id: &str) -> Option<&'static RotationGuide> {

@@ -14,6 +14,13 @@ fn findings_for(content: &str) -> Vec<String> {
         .collect()
 }
 
+fn findings_for_path(content: &str, path: &str) -> Vec<String> {
+    secox_lib::scan_content_pub(content, Path::new(path), None, None)
+        .into_iter()
+        .map(|f| f.rule_id.to_string())
+        .collect()
+}
+
 /// Joins parts at runtime so no complete secret literal exists in source.
 fn t(parts: &[&str]) -> String {
     parts.concat()
@@ -326,4 +333,61 @@ fn natural_language_generic_secret_ignored() {
     let src = r#"secret = "TheseAreJustEnglishWordsHere""#;
     let ids = findings_for(src);
     assert!(!ids.contains(&"generic-secret".to_string()), "false positive: {ids:?}");
+}
+
+// ── Sensitive filename tests ──────────────────────────────────────────────────
+
+#[test]
+fn env_file_flagged_by_name() {
+    let ids = findings_for_path("DB_PASSWORD=anything", ".env");
+    assert!(ids.contains(&"sensitive-file-env".to_string()), "{ids:?}");
+}
+
+#[test]
+fn env_local_file_flagged() {
+    let ids = findings_for_path("API_KEY=anything", ".env.local");
+    assert!(ids.contains(&"sensitive-file-env".to_string()), "{ids:?}");
+}
+
+#[test]
+fn env_production_file_flagged() {
+    let ids = findings_for_path("SECRET=value", ".env.production");
+    assert!(ids.contains(&"sensitive-file-env".to_string()), "{ids:?}");
+}
+
+#[test]
+fn ssh_private_key_file_flagged() {
+    let ids = findings_for_path("-----BEGIN RSA PRIVATE KEY-----", "id_rsa");
+    assert!(ids.contains(&"sensitive-file-key".to_string()), "{ids:?}");
+}
+
+#[test]
+fn pem_file_flagged() {
+    let ids = findings_for_path("-----BEGIN CERTIFICATE-----", "server.pem");
+    assert!(ids.contains(&"sensitive-file-key".to_string()), "{ids:?}");
+}
+
+#[test]
+fn tfvars_file_flagged() {
+    let ids = findings_for_path("db_password = \"secret\"", "terraform.tfvars");
+    assert!(ids.contains(&"sensitive-file-credentials".to_string()), "{ids:?}");
+}
+
+#[test]
+fn gcp_service_account_file_flagged() {
+    let ids = findings_for_path("{\"type\": \"service_account\"}", "credentials.json");
+    assert!(ids.contains(&"sensitive-file-credentials".to_string()), "{ids:?}");
+}
+
+#[test]
+fn normal_source_file_not_flagged_by_name() {
+    let ids = findings_for_path("x = 1", "main.py");
+    assert!(!ids.iter().any(|id| id.starts_with("sensitive-file-")), "{ids:?}");
+}
+
+#[test]
+fn env_example_file_flagged() {
+    // .env.example files are often committed with real secrets accidentally
+    let ids = findings_for_path("API_KEY=change_me", ".env.example");
+    assert!(ids.contains(&"sensitive-file-env".to_string()), "{ids:?}");
 }

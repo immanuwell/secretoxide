@@ -36,6 +36,111 @@ fn is_binary(buf: &[u8]) -> bool {
     buf.iter().take(8192).any(|&b| b == 0)
 }
 
+// ── Sensitive-filename detection ──────────────────────────────────────────────
+//
+// Some files are dangerous to commit regardless of their content — private keys,
+// env files, credential configs, etc. We flag them by name so that even an empty
+// or partially-filled file raises a warning before it reaches remote.
+
+struct SensitiveFileRule {
+    rule_id:   &'static str,
+    rule_name: &'static str,
+}
+
+fn sensitive_file_rule(name: &str) -> Option<SensitiveFileRule> {
+    // Exact names (lowercased comparison)
+    const ENV_NAMES: &[&str] = &[
+        ".env", ".env.local", ".env.development", ".env.staging",
+        ".env.production", ".env.test", ".env.backup", ".env.example",
+        ".envrc",
+    ];
+    const KEY_NAMES: &[&str] = &[
+        "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+        "id_rsa.pub", "id_dsa.pub", "id_ecdsa.pub", "id_ed25519.pub",
+    ];
+    const CRED_NAMES: &[&str] = &[
+        "credentials.json", "credentials.csv",
+        "secrets.json", "secrets.yml", "secrets.yaml",
+        "serviceaccountkey.json", "service_account.json", "service-account.json",
+        ".netrc", ".htpasswd", "htpasswd",
+        "terraform.tfvars", "terraform.tfvars.json",
+        "wp-config.php",
+    ];
+
+    let lower = name.to_lowercase();
+
+    if ENV_NAMES.contains(&lower.as_str()) || lower.starts_with(".env.") {
+        return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-env",
+            rule_name: "Environment Secrets File",
+        });
+    }
+    if KEY_NAMES.contains(&lower.as_str()) {
+        return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-key",
+            rule_name: "SSH Private Key File",
+        });
+    }
+    if CRED_NAMES.contains(&lower.as_str())
+        || lower.ends_with("serviceaccountkey.json")
+        || lower.ends_with("service_account.json")
+    {
+        return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-credentials",
+            rule_name: "Credential / Secrets Config File",
+        });
+    }
+
+    // Extension-based rules
+    match std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+    {
+        Some("pem") => return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-key",
+            rule_name: "PEM Certificate / Key File",
+        }),
+        Some("p12") | Some("pfx") => return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-key",
+            rule_name: "PKCS#12 Certificate File",
+        }),
+        Some("jks") | Some("keystore") => return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-key",
+            rule_name: "Java KeyStore File",
+        }),
+        Some("tfvars") => return Some(SensitiveFileRule {
+            rule_id:   "sensitive-file-credentials",
+            rule_name: "Terraform Variables File",
+        }),
+        _ => {}
+    }
+
+    None
+}
+
+fn check_sensitive_filename(
+    path: &Path,
+    commit: Option<&str>,
+    commit_message: Option<&str>,
+) -> Option<Finding> {
+    let file_name = path.file_name()?.to_str()?;
+    let rule = sensitive_file_rule(file_name)?;
+
+    let display = file_name.to_string();
+    Some(Finding {
+        rule_id:        rule.rule_id,
+        rule_name:      rule.rule_name,
+        confidence:     Confidence::High,
+        file:           path.to_path_buf(),
+        line_number:    0,
+        line:           display.clone(),
+        secret_preview: display.clone(),
+        secret_raw:     String::new(),
+        commit:         commit.map(|s| s.to_string()),
+        commit_message: commit_message.map(|s| s.to_string()),
+    })
+}
+
 pub fn scan_content(
     content: &str,
     path: &Path,
@@ -48,6 +153,11 @@ pub fn scan_content(
 
     let in_test_file = is_test_path(path);
     let mut findings = Vec::new();
+
+    // Filename-level check runs before content — flagged regardless of what's inside.
+    if let Some(f) = check_sensitive_filename(path, commit, commit_message) {
+        findings.push(f);
+    }
 
     for (line_idx, line) in content.lines().enumerate() {
         if line.contains(INLINE_IGNORE) || line.contains(INLINE_ALLOW) {
