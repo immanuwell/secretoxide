@@ -2,6 +2,7 @@ mod cli;
 mod git;
 mod output;
 mod resolve;
+mod rotation;
 
 use secox_lib::{ignore::SecoxIgnore, rules, scanner, types};
 
