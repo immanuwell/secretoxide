@@ -23,6 +23,14 @@ static PLACEHOLDER_PATTERN: Lazy<Regex> = Lazy::new(|| {
     ).unwrap()
 });
 
+/// Composite phrases like "TestPassword", "FakeApiKey", "SampleSecret" appear in
+/// documentation and test files — they are not real credentials.
+static PLACEHOLDER_PHRASE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)(test|fake|mock|sample|example|demo|dummy|stub)(pass(word)?|secret|key|token|cred|auth|api)",
+    ).unwrap()
+});
+
 fn is_all_caps_identifier(value: &str) -> bool {
     // Env-var names used as values look like MY_API_KEY — they always have underscores.
     // Real secrets like AKIA... have no underscores, so we exclude them here.
@@ -38,7 +46,25 @@ pub fn is_placeholder(value: &str) -> bool {
         || value.starts_with("{{")
         || value.starts_with("<%")
         || is_all_caps_identifier(value)
+        || PLACEHOLDER_PHRASE.is_match(value)
         || value.chars().collect::<std::collections::HashSet<_>>().len() <= 2
+}
+
+/// Heuristic check for generic (non-structured) rules only: a value that looks like
+/// a camelCase or snake_case identifier is a variable name, not a hardcoded secret.
+/// Do NOT call this for HIGH confidence rules with strict prefixes (sk_live_, ghp_, …).
+pub fn looks_like_code_identifier(value: &str) -> bool {
+    if value.len() < 6 || value.len() > 40 {
+        return false;
+    }
+    let bytes = value.as_bytes();
+    let is_snake = bytes.iter().all(|&b| b.is_ascii_lowercase() || b == b'_' || b.is_ascii_digit())
+        && bytes.contains(&b'_');
+    let is_camel = bytes.iter().all(|&b| b.is_ascii_alphanumeric())
+        && bytes[0].is_ascii_lowercase()
+        && bytes.iter().any(|&b| b.is_ascii_uppercase())
+        && !bytes.iter().any(|&b| b.is_ascii_digit());
+    is_snake || is_camel
 }
 
 /// Number of distinct character classes present in `s` (uppercase / lowercase /

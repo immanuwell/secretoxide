@@ -124,6 +124,27 @@ fn file_ignore_suppresses_all() {
 }
 
 #[test]
+fn snake_case_identifier_as_value_ignored() {
+    let src = r#"password = "my_db_password_here""#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-password".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
+fn camel_case_identifier_as_value_ignored() {
+    let src = r#"secret = "myApplicationSecret""#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-secret".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
+fn composite_placeholder_phrase_ignored() {
+    let src = r#"password = "TestPassword123!""#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-password".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
 fn env_reference_line_not_flagged() {
     // os.getenv call should not be treated as a hardcoded secret
     let src = r#"api_key = os.getenv("OPENAI_API_KEY", "")"#;

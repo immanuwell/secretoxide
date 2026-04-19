@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 use crate::{
     ignore::SecoxIgnore,
-    rules::{char_class_diversity, entropy, is_env_reference, is_placeholder, redact, RULES},
+    rules::{char_class_diversity, entropy, is_env_reference, is_placeholder, looks_like_code_identifier, redact, RULES},
     types::{Confidence, Finding},
 };
 
@@ -74,10 +74,13 @@ pub fn scan_content(
                     continue;
                 }
 
-                // Generic (non-structured) rules need at least 2 character classes
-                // and enough entropy — otherwise it's almost certainly not a real secret.
+                // Generic (non-structured) rules get extra semantic checks:
+                // identifier patterns, character diversity, and entropy.
                 if rule.meta.secret_group > 0 && rule.meta.confidence != Confidence::High {
-                    if char_class_diversity(secret) < 2 || entropy(secret) < 3.2 {
+                    if looks_like_code_identifier(secret)
+                        || char_class_diversity(secret) < 2
+                        || entropy(secret) < 3.2
+                    {
                         continue;
                     }
                 }
