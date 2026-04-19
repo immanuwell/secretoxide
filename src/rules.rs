@@ -60,6 +60,18 @@ pub fn entropy(s: &str) -> f64 {
         .sum()
 }
 
+static ENV_REF_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)\b(os\.getenv|os\.environ|process\.env\.|System\.getenv|getenv\s*\(|secrets\.get\s*\(|config\.get\s*\(|settings\.[A-Z_])",
+    ).unwrap()
+});
+
+/// Returns true when the line fetches a value from the environment rather than
+/// hard-coding it — e.g. `os.getenv(...)` or `process.env.SECRET`.
+pub fn is_env_reference(line: &str) -> bool {
+    ENV_REF_PATTERN.is_match(line)
+}
+
 pub fn redact(secret: &str) -> String {
     let n = secret.len();
     if n <= 8 {
@@ -312,7 +324,8 @@ fn build_rules() -> Vec<CompiledRule> {
             "Secret-looking value in an environment file.",
             Confidence::Low,
             1,
-            r#"(?m)^(?i)(?:PASSWORD|PASSWD|SECRET|API_KEY|APIKEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*([^\s#'"]{12,})"#,
+            // Exclude template syntax (${ {{ <%) and function calls (parens/brackets).
+            r#"(?m)^(?i)(?:PASSWORD|PASSWD|SECRET|API_KEY|APIKEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*(?!\$\{)(?!\{\{)(?!<%)([^\s#'"()\[\]{}<>$]{12,})"#,
         ),
     ];
 

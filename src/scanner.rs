@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 use crate::{
     ignore::SecoxIgnore,
-    rules::{entropy, is_placeholder, redact, RULES},
+    rules::{entropy, is_env_reference, is_placeholder, redact, RULES},
     types::{Confidence, Finding},
 };
 
@@ -52,6 +52,8 @@ pub fn scan_content(
             continue;
         }
 
+        let line_has_env_ref = is_env_reference(line);
+
         for rule in RULES.iter() {
             for caps in rule.regex.captures_iter(line) {
                 let secret = if rule.meta.secret_group == 0 {
@@ -64,6 +66,11 @@ pub fn scan_content(
                 };
 
                 if secret.is_empty() || is_placeholder(secret) {
+                    continue;
+                }
+
+                // Skip lines where the value is read from the environment at runtime.
+                if line_has_env_ref && rule.meta.secret_group > 0 {
                     continue;
                 }
 

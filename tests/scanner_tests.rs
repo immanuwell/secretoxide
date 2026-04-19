@@ -124,6 +124,22 @@ fn file_ignore_suppresses_all() {
 }
 
 #[test]
+fn env_reference_line_not_flagged() {
+    // os.getenv call should not be treated as a hardcoded secret
+    let src = r#"api_key = os.getenv("OPENAI_API_KEY", "")"#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-api-key".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
+fn env_secret_template_value_ignored() {
+    // .env file with a template placeholder
+    let src = "API_KEY=${MY_REAL_API_KEY_FROM_CI}";
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"env-secret".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
 fn all_caps_identifier_as_value_ignored() {
     // e.g. generic-api-key: api_key = "MY_PROD_API_KEY_VALUE" — all-caps env ref, not a secret
     let src = r#"api_key = "MY_PROD_API_KEY_VALUE""#;
