@@ -10,6 +10,51 @@ Every other scanner prints a list and walks away. secox stays — shows revocati
 cargo install secox
 ```
 
+```sh
+Quick start:
+  secox init          # install pre-commit hook
+  secox scan          # scan current directory
+  secox scan --staged # scan only staged files
+
+Usage: secox <COMMAND>
+
+Commands:
+  init     Install the secox pre-commit hook
+  scan     Scan for secrets in files or git history
+  resolve  Interactively triage findings: rotate real secrets, allow false positives
+  rules    List all built-in detection rules
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Examples:
+  secox init                              install pre-commit hook for this repo
+  secox init --global                     install once for all repos (core.hooksPath)
+  secox scan                              scan the current directory
+  secox scan --staged                     scan only what is staged right now
+  secox scan --git-history                audit the full commit history
+  secox scan --include-low                widen the net (more noise, fewer misses)
+  secox scan --format json | jq .         pipe findings to jq
+  secox scan --ignore "*.snap"            skip snapshot files
+  secox scan --ignore vendor/             skip vendored dependencies
+  secox resolve                           triage blocked-commit findings interactively
+  secox rules                             list all built-in detection rules
+
+Suppress a single finding inline:
+  api_key = "sk-live-..."  # secox:allow
+
+Suppress all findings in a file — add to the top:
+  # secox:allow-file
+```
+
+`secox <command> --help` has examples for everything.
+
+
 ---
 
 ## Basics
@@ -109,50 +154,3 @@ secox init --global
 Sets `core.hooksPath`. Every repo on the machine is covered from that point, no per-project setup.
 
 ---
-
-## All commands
-
-```sh
-Quick start:
-  secox init          # install pre-commit hook
-  secox scan          # scan current directory
-  secox scan --staged # scan only staged files
-
-Usage: secox <COMMAND>
-
-Commands:
-  init     Install the secox pre-commit hook
-  scan     Scan for secrets in files or git history
-  resolve  Interactively triage findings: rotate real secrets, allow false positives
-  rules    List all built-in detection rules
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-
-Examples:
-  secox init                              install pre-commit hook for this repo
-  secox init --global                     install once for all repos (core.hooksPath)
-  secox scan                              scan the current directory
-  secox scan --staged                     scan only what is staged right now
-  secox scan --git-history                audit the full commit history
-  secox scan --include-low                widen the net (more noise, fewer misses)
-  secox scan --format json | jq .         pipe findings to jq
-  secox scan --ignore "*.snap"            skip snapshot files
-  secox scan --ignore vendor/             skip vendored dependencies
-  secox resolve                           triage blocked-commit findings interactively
-  secox rules                             list all built-in detection rules
-
-Suppress a single finding inline:
-  api_key = "sk-live-..."  # secox:allow
-
-Suppress all findings in a file — add to the top:
-  # secox:allow-file
-```
-
-`secox <command> --help` has examples for everything.
-
