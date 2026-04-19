@@ -1,6 +1,7 @@
 mod cli;
 mod git;
 mod output;
+mod resolve;
 
 use secox_lib::{ignore::SecoxIgnore, rules, scanner, types};
 
@@ -27,6 +28,7 @@ fn main() {
         Commands::Scan { path, staged, git_history, format, no_fail, include_low, ignore } => {
             cmd_scan(path, staged, git_history, format, no_fail, include_low, ignore)
         }
+        Commands::Resolve { staged } => cmd_resolve(staged),
         Commands::Rules { format } => cmd_rules(format),
     }
 }
@@ -162,6 +164,17 @@ fn cmd_scan(
 
     if !findings.is_empty() && !no_fail {
         process::exit(1);
+    }
+}
+
+fn cmd_resolve(staged: bool) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
+    let ignore = SecoxIgnore::load(&repo_root, &[]);
+
+    if let Err(e) = resolve::run(&repo_root, &ignore, staged) {
+        eprintln!("{} {e}", "error:".red().bold());
+        process::exit(2);
     }
 }
 

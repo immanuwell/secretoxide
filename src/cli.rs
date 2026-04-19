@@ -69,6 +69,17 @@ pub enum Commands {
         ignore: Vec<String>,
     },
 
+    /// Interactively review each finding and mark false positives as allowed.
+    ///
+    /// For each finding secox asks "Allow? [y/N]". Pressing y injects a
+    /// language-appropriate  secox:allow  comment onto that line so future
+    /// scans skip it. Pressing n (or Enter) leaves the finding in place.
+    Resolve {
+        /// Resolve findings in staged files only (default: scan staged files).
+        #[arg(long, default_value_t = true)]
+        staged: bool,
+    },
+
     /// List all built-in detection rules.
     Rules {
         /// Output format.
