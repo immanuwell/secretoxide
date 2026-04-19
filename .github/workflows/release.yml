@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY: secox
+
+jobs:
+  build:
+    name: Build — ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: secox-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: secox-linux-aarch64
+            use_cross: true
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: secox-linux-x86_64-musl
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: secox-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: secox-macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: secox-windows-x86_64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install musl tools (Linux musl only)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      - name: Install cross (cross-compilation)
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (cargo)
+        if: "!matrix.use_cross"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.BINARY }} \
+             ${{ matrix.artifact }}
+
+      - name: Rename binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.BINARY }}.exe `
+             ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifact directory
+        run: |
+          mkdir binaries
+          find artifacts -type f -exec mv {} binaries/ \;
+          ls -lh binaries/
+
+      - name: Generate checksums
+        working-directory: binaries
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "secox ${{ github.ref_name }}"
+          body: |
+            ## secox ${{ github.ref_name }}
+
+            The secret scanner that doesn't stop at "you have a problem."
+
+            ### What's in the box
+
+            **Remediation-first resolve flow** — when a commit is blocked, run `secox resolve`. For each finding: `[r]` shows the provider's revocation URL and steps, offers to swap the hardcoded value for an env var reference right in the file, then checks git history and hands you the exact `git filter-repo` command if the secret is baked into old commits. `[a]` marks it as a false positive and injects a `# secox:allow` pragma. `[s]` skips it.
+
+            **Dangerous filename detection** — `.env*`, `id_rsa`, `id_ed25519`, `*.pem`, `*.p12`, `credentials.json`, `serviceAccountKey.json`, `terraform.tfvars` and more are flagged the moment they hit the staging area, before content is even scanned.
+
+            **Baseline for legacy repos** — `secox baseline` snapshots all current findings so only *new* secrets block future commits. Commit `.secox-baseline.json` to share the suppression list with your team.
+
+            **Lowest false positive rate** — three layers: context-aware (skips `os.getenv`, placeholders, test fixtures), semantic (entropy + bigram humanness filter), and per-provider structural validation (GitHub CRC-32 checksum, AWS entropy guard, JWT header decode).
+
+            **43 detection rules** — AWS, GitHub, Stripe, OpenAI, Anthropic, Slack, GitLab, DigitalOcean, Docker Hub, Shopify, HuggingFace, Databricks, Azure, Twilio, Mailchimp, and more.
+
+            ### Install
+
+            Download the binary for your platform below, make it executable, and put it on your `$PATH`. Then:
+
+            ```bash
+            secox init   # install the pre-commit hook
+            ```
+
+            Or build from source:
+            ```bash
+            cargo install secox
+            ```
+
+            ### Verify checksums
+
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: |
+            binaries/*
+          draft: false
+          prerelease: false
