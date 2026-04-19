@@ -101,6 +101,93 @@ pub fn uninstall_hook(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn scan_history(_repo_root: &Path) -> Result<Vec<Finding>> {
-    Ok(vec![]) // TODO: implement in upcoming commit
+pub fn scan_history(repo_root: &Path) -> Result<Vec<Finding>> {
+    use std::process::Command;
+
+    use anyhow::Context;
+
+    use crate::scanner::scan_content;
+
+    let log = Command::new("git")
+        .args(["log", "--all", "--format=%H%x09%s", "--reverse"])
+        .current_dir(repo_root)
+        .output()
+        .context("failed to run git log")?;
+
+    if !log.status.success() {
+        anyhow::bail!("git log failed: {}", String::from_utf8_lossy(&log.stderr));
+    }
+
+    let commits: Vec<(String, String)> = String::from_utf8_lossy(&log.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let hash = parts.next()?.trim().to_string();
+            let msg = parts.next().unwrap_or("").trim().to_string();
+            Some((hash, msg))
+        })
+        .collect();
+
+    let total = commits.len();
+    let mut findings = Vec::new();
+
+    for (i, (hash, msg)) in commits.iter().enumerate() {
+        eprint!("\r  Scanning commit {}/{total} {}...", i + 1, &hash[..8]);
+
+        let diff = match Command::new("git")
+            .args(["diff-tree", "--no-commit-id", "-r", "-p", hash])
+            .current_dir(repo_root)
+            .output()
+        {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let patch = String::from_utf8_lossy(&diff.stdout);
+        let mut current_file: Option<PathBuf> = None;
+        let mut added_lines: Vec<(usize, String)> = Vec::new();
+        let mut hunk_line: usize = 1;
+
+        for line in patch.lines() {
+            if line.starts_with("+++ b/") {
+                if let Some(file) = &current_file {
+                    let content = added_lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
+                    let mut ff = scan_content(&content, file, Some(hash), Some(msg));
+                    for f in &mut ff {
+                        if let Some((orig, _)) = added_lines.get(f.line_number.saturating_sub(1)) {
+                            f.line_number = *orig;
+                        }
+                    }
+                    findings.append(&mut ff);
+                }
+                current_file = Some(repo_root.join(&line[6..]));
+                added_lines = Vec::new();
+                hunk_line = 1;
+            } else if line.starts_with("@@ ") {
+                if let Some(s) = line.split('+').nth(1) {
+                    hunk_line = s.split(&[',', ' ']).next().and_then(|n| n.parse().ok()).unwrap_or(1);
+                }
+            } else if line.starts_with('+') && !line.starts_with("+++") {
+                added_lines.push((hunk_line, line[1..].to_string()));
+                hunk_line += 1;
+            } else if !line.starts_with('-') {
+                hunk_line += 1;
+            }
+        }
+
+        if let Some(file) = &current_file {
+            let content = added_lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
+            let mut ff = scan_content(&content, file, Some(hash), Some(msg));
+            for f in &mut ff {
+                if let Some((orig, _)) = added_lines.get(f.line_number.saturating_sub(1)) {
+                    f.line_number = *orig;
+                }
+            }
+            findings.append(&mut ff);
+        }
+    }
+
+    eprintln!();
+    Ok(findings)
 }

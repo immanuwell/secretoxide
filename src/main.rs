@@ -19,7 +19,9 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { uninstall } => cmd_init(uninstall),
-        Commands::Scan { path, staged, no_fail } => cmd_scan(path, staged, no_fail),
+        Commands::Scan { path, staged, git_history, no_fail, include_low } => {
+            cmd_scan(path, staged, git_history, no_fail, include_low)
+        }
         Commands::Rules => cmd_rules(),
     }
 }
@@ -62,15 +64,19 @@ fn cmd_init(uninstall: bool) {
     }
 }
 
-fn cmd_scan(path: PathBuf, staged: bool, no_fail: bool) {
+fn cmd_scan(path: PathBuf, staged: bool, git_history: bool, no_fail: bool, include_low: bool) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
 
-    let mode = if staged { "scanning staged files" } else { "scanning directory" };
+    let mode = if staged { "scanning staged files" }
+               else if git_history { "scanning git history" }
+               else { "scanning directory" };
     print_banner(mode);
 
     let mut findings = match if staged {
         scanner::scan_staged(&repo_root)
+    } else if git_history {
+        git::scan_history(&repo_root)
     } else {
         scanner::scan_directory(&path)
     } {
@@ -81,7 +87,9 @@ fn cmd_scan(path: PathBuf, staged: bool, no_fail: bool) {
         }
     };
 
-    findings.retain(|f| f.confidence != Confidence::Low);
+    if !include_low {
+        findings.retain(|f| f.confidence != Confidence::Low);
+    }
     findings.sort_by(|a, b| {
         a.confidence.cmp(&b.confidence)
             .then(a.file.cmp(&b.file))

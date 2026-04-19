@@ -33,9 +33,17 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
 
+        /// Scan the entire git commit history (can be slow on large repos).
+        #[arg(long, conflicts_with = "staged")]
+        git_history: bool,
+
         /// Exit 0 even when secrets are found (useful in advisory CI mode).
         #[arg(long)]
         no_fail: bool,
+
+        /// Include low-confidence findings (more noise, fewer missed secrets).
+        #[arg(long)]
+        include_low: bool,
     },
 
     /// List all built-in detection rules.
