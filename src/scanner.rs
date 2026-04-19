@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 use crate::{
     ignore::SecoxIgnore,
-    rules::{char_class_diversity, entropy, is_env_reference, is_placeholder, looks_like_code_identifier, redact, RULES},
+    rules::{char_class_diversity, entropy, is_env_reference, is_placeholder, is_test_path, looks_like_code_identifier, redact, RULES},
     types::{Confidence, Finding},
 };
 
@@ -45,6 +45,7 @@ pub fn scan_content(
         return vec![];
     }
 
+    let in_test_file = is_test_path(path);
     let mut findings = Vec::new();
 
     for (line_idx, line) in content.lines().enumerate() {
@@ -85,10 +86,23 @@ pub fn scan_content(
                     }
                 }
 
+                // In test/fixture files, generic rules are downgraded to Medium so
+                // developers can still see them but they don't block CI on HIGH.
+                // Structured rules (aws, github, stripe…) keep full confidence because
+                // even fake-looking test keys may be real and should be rotated.
+                let effective_confidence = if in_test_file
+                    && rule.meta.secret_group > 0
+                    && rule.meta.confidence == Confidence::High
+                {
+                    Confidence::Medium
+                } else {
+                    rule.meta.confidence.clone()
+                };
+
                 findings.push(Finding {
                     rule_id: rule.meta.id,
                     rule_name: rule.meta.name,
-                    confidence: rule.meta.confidence.clone(),
+                    confidence: effective_confidence,
                     file: path.to_path_buf(),
                     line_number: line_idx + 1,
                     line: line.trim().to_string(),

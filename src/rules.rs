@@ -111,6 +111,39 @@ pub fn is_env_reference(line: &str) -> bool {
     ENV_REF_PATTERN.is_match(line)
 }
 
+/// Returns true when the path is clearly a test, fixture, or documentation file.
+/// Used to downgrade confidence for generic rules — specific-format rules (AWS, GitHub, …)
+/// are still flagged at full confidence because even test-file leaks should be rotated.
+pub fn is_test_path(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy().to_lowercase();
+    // Directory components
+    let test_dirs = [
+        "/test/", "/tests/", "/spec/", "/specs/", "/__tests__/",
+        "/fixtures/", "/fixture/", "/mocks/", "/mock/",
+        "/examples/", "/example/", "/docs/", "/doc/",
+        "/testdata/", "/test_data/",
+    ];
+    if test_dirs.iter().any(|d| s.contains(d)) {
+        return true;
+    }
+    // File name patterns
+    if let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_lowercase()) {
+        let test_names = ["_test.", "_spec.", ".test.", ".spec.", "test_", "spec_"];
+        if test_names.iter().any(|p| name.contains(p)) {
+            return true;
+        }
+        // Common test file names
+        if matches!(
+            name.as_ref(),
+            "test.py" | "test.js" | "test.ts" | "test.go" | "test.rb"
+                | "conftest.py" | "setup_test.go"
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn redact(secret: &str) -> String {
     let n = secret.len();
     if n <= 8 {
