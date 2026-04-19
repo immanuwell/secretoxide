@@ -2,7 +2,7 @@ mod cli;
 mod git;
 mod output;
 
-use secox_lib::{rules, scanner, types};
+use secox_lib::{ignore::SecoxIgnore, rules, scanner, types};
 
 use std::path::PathBuf;
 use std::process;
@@ -24,8 +24,8 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { uninstall } => cmd_init(uninstall),
-        Commands::Scan { path, staged, git_history, format, no_fail, include_low } => {
-            cmd_scan(path, staged, git_history, format, no_fail, include_low)
+        Commands::Scan { path, staged, git_history, format, no_fail, include_low, ignore } => {
+            cmd_scan(path, staged, git_history, format, no_fail, include_low, ignore)
         }
         Commands::Rules { format } => cmd_rules(format),
     }
@@ -76,9 +76,11 @@ fn cmd_scan(
     format: OutputFormat,
     no_fail: bool,
     include_low: bool,
+    ignore_cli: Vec<String>,
 ) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
+    let ignore = SecoxIgnore::load(&repo_root, &ignore_cli);
 
     if format == OutputFormat::Text {
         let mode = if staged { "scanning staged files" }
@@ -88,11 +90,11 @@ fn cmd_scan(
     }
 
     let mut findings = match if staged {
-        scanner::scan_staged(&repo_root)
+        scanner::scan_staged(&repo_root, &ignore)
     } else if git_history {
-        git::scan_history(&repo_root)
+        git::scan_history(&repo_root, &ignore)
     } else {
-        scanner::scan_directory(&path)
+        scanner::scan_directory(&path, &ignore, &repo_root)
     } {
         Ok(f) => f,
         Err(e) => {

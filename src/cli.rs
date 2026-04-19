@@ -50,6 +50,12 @@ pub enum Commands {
         /// Include low-confidence findings (more noise, fewer missed secrets).
         #[arg(long)]
         include_low: bool,
+
+        /// Extra paths or glob patterns to ignore, in addition to .secoxignore.
+        /// Accepts the same syntax as .secoxignore: plain names ("tests"),
+        /// rooted paths ("/vendor"), wildcards ("*.snap"), or "**/" prefixes.
+        #[arg(long, value_name = "PATTERN")]
+        ignore: Vec<String>,
     },
 
     /// List all built-in detection rules.

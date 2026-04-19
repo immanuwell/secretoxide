@@ -1,3 +1,4 @@
+pub mod ignore;
 pub mod rules;
 pub mod scanner;
 pub mod types;

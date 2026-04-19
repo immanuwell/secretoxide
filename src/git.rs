@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::types::Finding;
+use secox_lib::{ignore::SecoxIgnore, types::Finding};
 
 pub fn find_git_root(start: &Path) -> Option<PathBuf> {
     let mut dir = start.to_path_buf();
@@ -101,7 +101,7 @@ pub fn uninstall_hook(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn scan_history(repo_root: &Path) -> Result<Vec<Finding>> {
+pub fn scan_history(repo_root: &Path, ignore: &SecoxIgnore) -> Result<Vec<Finding>> {
     use std::process::Command;
 
     use anyhow::Context;
@@ -152,14 +152,16 @@ pub fn scan_history(repo_root: &Path) -> Result<Vec<Finding>> {
         for line in patch.lines() {
             if line.starts_with("+++ b/") {
                 if let Some(file) = &current_file {
-                    let content = added_lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
-                    let mut ff = scan_content(&content, file, Some(hash), Some(msg));
-                    for f in &mut ff {
-                        if let Some((orig, _)) = added_lines.get(f.line_number.saturating_sub(1)) {
-                            f.line_number = *orig;
+                    if !ignore.is_ignored(file, repo_root) {
+                        let content = added_lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
+                        let mut ff = scan_content(&content, file, Some(hash), Some(msg));
+                        for f in &mut ff {
+                            if let Some((orig, _)) = added_lines.get(f.line_number.saturating_sub(1)) {
+                                f.line_number = *orig;
+                            }
                         }
+                        findings.append(&mut ff);
                     }
-                    findings.append(&mut ff);
                 }
                 current_file = Some(repo_root.join(&line[6..]));
                 added_lines = Vec::new();
@@ -177,14 +179,16 @@ pub fn scan_history(repo_root: &Path) -> Result<Vec<Finding>> {
         }
 
         if let Some(file) = &current_file {
-            let content = added_lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
-            let mut ff = scan_content(&content, file, Some(hash), Some(msg));
-            for f in &mut ff {
-                if let Some((orig, _)) = added_lines.get(f.line_number.saturating_sub(1)) {
-                    f.line_number = *orig;
+            if !ignore.is_ignored(file, repo_root) {
+                let content = added_lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
+                let mut ff = scan_content(&content, file, Some(hash), Some(msg));
+                for f in &mut ff {
+                    if let Some((orig, _)) = added_lines.get(f.line_number.saturating_sub(1)) {
+                        f.line_number = *orig;
+                    }
                 }
+                findings.append(&mut ff);
             }
-            findings.append(&mut ff);
         }
     }
 

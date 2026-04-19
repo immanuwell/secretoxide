@@ -4,6 +4,7 @@ use anyhow::Result;
 use walkdir::WalkDir;
 
 use crate::{
+    ignore::SecoxIgnore,
     rules::{entropy, is_placeholder, redact, RULES},
     types::{Confidence, Finding},
 };
@@ -64,7 +65,6 @@ pub fn scan_content(
                     continue;
                 }
 
-                // Medium/low rules require decent entropy to reduce false positives.
                 if rule.meta.confidence != Confidence::High && entropy(secret) < 3.2 {
                     continue;
                 }
@@ -106,7 +106,7 @@ pub fn scan_file(path: &Path) -> Result<Vec<Finding>> {
     Ok(scan_content(&content, path, None, None))
 }
 
-pub fn scan_staged(repo_root: &Path) -> Result<Vec<Finding>> {
+pub fn scan_staged(repo_root: &Path, ignore: &SecoxIgnore) -> Result<Vec<Finding>> {
     use std::process::Command;
 
     let output = Command::new("git")
@@ -126,11 +126,12 @@ pub fn scan_staged(repo_root: &Path) -> Result<Vec<Finding>> {
 
     let mut findings = Vec::new();
     for path in &files {
-        if path.exists() {
-            match scan_file(path) {
-                Ok(mut f) => findings.append(&mut f),
-                Err(_) => {}
-            }
+        if !path.exists() || ignore.is_ignored(path, repo_root) {
+            continue;
+        }
+        match scan_file(path) {
+            Ok(mut f) => findings.append(&mut f),
+            Err(_) => {}
         }
     }
 
@@ -147,7 +148,7 @@ fn is_lock_file(path: &Path) -> bool {
     )
 }
 
-pub fn scan_directory(path: &Path) -> Result<Vec<Finding>> {
+pub fn scan_directory(path: &Path, ignore: &SecoxIgnore, repo_root: &Path) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
 
     for entry in WalkDir::new(path)
@@ -161,11 +162,11 @@ pub fn scan_directory(path: &Path) -> Result<Vec<Finding>> {
             continue;
         }
 
-        if !p.is_file() {
+        if ignore.is_ignored(p, repo_root) {
             continue;
         }
 
-        if is_lock_file(p) {
+        if !p.is_file() || is_lock_file(p) {
             continue;
         }
 

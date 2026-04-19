@@ -16,8 +16,6 @@ pub struct CompiledRule {
     pub regex: Regex,
 }
 
-use once_cell::sync::Lazy as _Lazy;
-
 /// Strings that indicate a value is a placeholder, not a real secret.
 static PLACEHOLDER_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(example|test|dummy|placeholder|your[_\-]?|insert[_\-]?|replace[_\-]?|xxx+|aaa+|000+|changeme|fixme|todo|<[^>]+>|\*+|\.\.\.+|n/?a)").unwrap()
