@@ -1,5 +1,7 @@
 ![](media/secretoxide.png)
 
+![](media/screenshot-1.png)
+
 # secox
 
 Finds secrets in your code. Then actually helps you fix them.
