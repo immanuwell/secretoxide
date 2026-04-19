@@ -1,9 +1,8 @@
 mod cli;
 mod git;
 mod output;
-mod rules;
-mod scanner;
-mod types;
+
+use secox_lib::{rules, scanner, types};
 
 use std::path::PathBuf;
 use std::process;
@@ -16,6 +15,12 @@ use output::{print_banner, print_findings, print_summary};
 use types::{Confidence, OutputFormat};
 
 fn main() {
+    // Reset SIGPIPE to default so we exit cleanly when output is piped to `head` etc.
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { uninstall } => cmd_init(uninstall),
