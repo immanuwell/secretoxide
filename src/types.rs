@@ -26,6 +26,9 @@ pub struct Finding {
     pub line_number: usize,
     pub line: String,
     pub secret_preview: String,
+    /// Raw secret value — used for env-var replacement and history checks.
+    /// Not included in any serialised output (JSON/SARIF).
+    pub secret_raw: String,
     pub commit: Option<String>,
     pub commit_message: Option<String>,
 }

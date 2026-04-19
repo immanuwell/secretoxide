@@ -40,6 +40,7 @@ pub fn run(repo_root: &Path, ignore: &SecoxIgnore, staged: bool) -> Result<()> {
         match prompt_action()? {
             Action::Rotate => {
                 show_rotation_guide(finding);
+                offer_env_var_replacement(finding)?;
                 rotated += 1;
             }
             Action::Allow => {
@@ -97,6 +98,113 @@ fn show_rotation_guide(finding: &Finding) {
             );
         }
     }
+}
+
+// ── env var replacement ───────────────────────────────────────────────────────
+
+fn offer_env_var_replacement(finding: &Finding) -> Result<()> {
+    if finding.secret_raw.is_empty() {
+        return Ok(());
+    }
+
+    // Inside an env file the right fix is to stop tracking the file, not to
+    // replace the value with a reference to itself.
+    let file_name = finding
+        .file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if file_name.starts_with(".env") {
+        println!(
+            "  {} This secret is in {}. Stop tracking it and add it to .gitignore:\n\
+             \n  {}\n  {}\n",
+            "hint:".yellow().bold(),
+            file_name.cyan(),
+            format!("echo '{}' >> .gitignore", file_name).cyan(),
+            format!("git rm --cached {}", file_name).cyan(),
+        );
+        return Ok(());
+    }
+
+    let hint = rotation::guide_for(finding.rule_id)
+        .map(|g| g.env_var_hint)
+        .unwrap_or("SECRET");
+
+    print!(
+        "  Replace hardcoded value with env var? [y/N] (suggested: {}) ",
+        hint.cyan()
+    );
+    io::stdout().flush()?;
+
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
+        return Ok(());
+    }
+
+    print!("  Env var name [{}]: ", hint.cyan());
+    io::stdout().flush()?;
+    let mut var_name_input = String::new();
+    io::stdin().read_line(&mut var_name_input)?;
+    let var_name = var_name_input.trim();
+    let var_name = if var_name.is_empty() { hint } else { var_name };
+
+    let reference = env_var_reference(&finding.file, var_name);
+
+    match replace_in_file(&finding.file, &finding.secret_raw, &reference) {
+        Ok(true) => {
+            println!(
+                "  {} Replaced with {}\n  {} Add to your secrets manager or .env file:\n  {}\n",
+                "✓".green(),
+                reference.cyan(),
+                "hint:".dimmed(),
+                format!("{}=<your-value>", var_name).dimmed(),
+            );
+        }
+        Ok(false) => {
+            println!(
+                "  {} Could not find the exact secret value in the file — edit manually.\n",
+                "!".yellow()
+            );
+        }
+        Err(e) => {
+            println!("  {} Failed to modify file: {}\n", "!".red(), e);
+        }
+    }
+
+    Ok(())
+}
+
+fn env_var_reference(path: &Path, var_name: &str) -> String {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    match ext {
+        "py" => format!(r#"os.environ["{}"]"#, var_name),
+        "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" => {
+            format!("process.env.{}", var_name)
+        }
+        "go" => format!(r#"os.Getenv("{}")"#, var_name),
+        "rb" => format!(r#"ENV["{}"]"#, var_name),
+        "java" | "kt" | "scala" | "groovy" => {
+            format!(r#"System.getenv("{}")"#, var_name)
+        }
+        "rs" => format!(
+            r#"std::env::var("{}").expect("{} not set")"#,
+            var_name, var_name
+        ),
+        "php" => format!(r#"$_ENV["{}"]"#, var_name),
+        "cs" => format!(r#"Environment.GetEnvironmentVariable("{}")"#, var_name),
+        _ => format!("${{{}}}", var_name),
+    }
+}
+
+fn replace_in_file(path: &Path, secret: &str, replacement: &str) -> Result<bool> {
+    let content = std::fs::read_to_string(path)?;
+    if !content.contains(secret) {
+        return Ok(false);
+    }
+    let new_content = content.replacen(secret, replacement, 1);
+    std::fs::write(path, new_content)?;
+    Ok(true)
 }
 
 // ── prompt helpers ────────────────────────────────────────────────────────────

@@ -147,6 +147,7 @@ pub fn scan_content(
                     line_number: line_idx + 1,
                     line: line.trim().to_string(),
                     secret_preview: redact(secret),
+                    secret_raw: secret.to_string(),
                     commit: commit.map(|s| s.to_string()),
                     commit_message: commit_message.map(|s| s.to_string()),
                 });
