@@ -23,7 +23,7 @@ fn main() {
 
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { uninstall } => cmd_init(uninstall),
+        Commands::Init { uninstall, global } => cmd_init(uninstall, global),
         Commands::Scan { path, staged, git_history, format, no_fail, include_low, ignore } => {
             cmd_scan(path, staged, git_history, format, no_fail, include_low, ignore)
         }
@@ -31,7 +31,15 @@ fn main() {
     }
 }
 
-fn cmd_init(uninstall: bool) {
+fn cmd_init(uninstall: bool, global: bool) {
+    if global {
+        cmd_init_global(uninstall);
+    } else {
+        cmd_init_local(uninstall);
+    }
+}
+
+fn cmd_init_local(uninstall: bool) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let root = match git::find_git_root(&cwd) {
         Some(r) => r,
@@ -43,8 +51,9 @@ fn cmd_init(uninstall: bool) {
 
     if uninstall {
         match git::uninstall_hook(&root) {
-            Ok(_) => println!("{} Hook removed.", "secox:".cyan().bold()),
-            Err(e) => { eprintln!("{} {e}", "error:".red().bold()); process::exit(1); }
+            Ok(true)  => println!("{} Hook removed.", "secox:".cyan().bold()),
+            Ok(false) => println!("{} No secox hook found — nothing to remove.", "secox:".cyan().bold()),
+            Err(e)    => { eprintln!("{} {e}", "error:".red().bold()); process::exit(1); }
         }
         return;
     }
@@ -54,6 +63,14 @@ fn cmd_init(uninstall: bool) {
         println!("  Add secox to your config:\n");
         println!("  {}", "  repos:\n    - repo: https://github.com/yourusername/secretoxide\n      rev: v0.1.0\n      hooks:\n        - id: secox".cyan());
         return;
+    }
+
+    if git::global_core_hooks_path().is_some() {
+        println!(
+            "  {} global core.hooksPath is already set — the global hook will run for this repo.",
+            "note:".yellow().bold()
+        );
+        println!("  Installing a per-repo hook as well (both will run).\n");
     }
 
     match git::install_hook(&root) {
@@ -66,6 +83,30 @@ fn cmd_init(uninstall: bool) {
             println!("    secox will now scan staged files before every commit.\n");
         }
         Err(e) => { eprintln!("{} Failed to install hook: {e}", "error:".red().bold()); process::exit(1); }
+    }
+}
+
+fn cmd_init_global(uninstall: bool) {
+    if uninstall {
+        match git::uninstall_global_hook() {
+            Ok(true)  => println!("{} Global hook removed.", "secox:".cyan().bold()),
+            Ok(false) => println!("{} No secox global hook found — nothing to remove.", "secox:".cyan().bold()),
+            Err(e)    => { eprintln!("{} {e}", "error:".red().bold()); process::exit(1); }
+        }
+        return;
+    }
+
+    match git::install_global_hook() {
+        Ok(dir) => {
+            println!(
+                "\n  {} Global pre-commit hook installed in {}",
+                "✓".green().bold(),
+                dir.display().to_string().cyan()
+            );
+            println!("    secox will now scan staged files before every commit in any repository.");
+            println!("    git config --global core.hooksPath is set to {}\n", dir.display().to_string().cyan());
+        }
+        Err(e) => { eprintln!("{} Failed to install global hook: {e}", "error:".red().bold()); process::exit(1); }
     }
 }
 

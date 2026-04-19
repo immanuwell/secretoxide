@@ -18,11 +18,22 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Install the secox pre-commit hook in the current git repository.
+    /// Install the secox pre-commit hook.
+    ///
+    /// By default installs into the current repository's .git/hooks/pre-commit.
+    /// Use --global to install once for all repositories via core.hooksPath.
     Init {
         /// Remove the secox hook instead of installing it.
         #[arg(long)]
         uninstall: bool,
+
+        /// Install (or uninstall) the hook globally for all git repositories
+        /// via `git config --global core.hooksPath`.
+        ///
+        /// Note: incompatible with the pre-commit framework — if your project
+        /// uses .pre-commit-config.yaml, add secox there instead.
+        #[arg(long)]
+        global: bool,
     },
 
     /// Scan for secrets in files or git history.
