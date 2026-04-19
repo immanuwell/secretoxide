@@ -18,11 +18,26 @@ pub struct CompiledRule {
 
 /// Strings that indicate a value is a placeholder, not a real secret.
 static PLACEHOLDER_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^(example|test|dummy|placeholder|your[_\-]?|insert[_\-]?|replace[_\-]?|xxx+|aaa+|000+|changeme|fixme|todo|<[^>]+>|\*+|\.\.\.+|n/?a)").unwrap()
+    Regex::new(
+        r"(?i)^(example|sample|test|dummy|placeholder|fake|mock|demo|default|your[_\-]?|insert[_\-]?|replace[_\-]?|enter[_\-]?|provide[_\-]?|use[_\-]?|set[_\-]?|my[_\-]?|xxx+|aaa+|bbb+|000+|111+|changeme|fixme|todo|<[^>]+>|\$\{[^}]*\}|\{\{[^}]*\}\}|<%[^%]*%>|\*+|\.\.\.+|n/?a|undefined|null|none|empty|blank)",
+    ).unwrap()
 });
+
+fn is_all_caps_identifier(value: &str) -> bool {
+    // Env-var names used as values look like MY_API_KEY — they always have underscores.
+    // Real secrets like AKIA... have no underscores, so we exclude them here.
+    value.len() >= 6
+        && value.contains('_')
+        && value.chars().all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit())
+        && value.chars().any(|c| c.is_ascii_uppercase())
+}
 
 pub fn is_placeholder(value: &str) -> bool {
     PLACEHOLDER_PATTERN.is_match(value)
+        || value.starts_with("${")
+        || value.starts_with("{{")
+        || value.starts_with("<%")
+        || is_all_caps_identifier(value)
         || value.chars().collect::<std::collections::HashSet<_>>().len() <= 2
 }
 

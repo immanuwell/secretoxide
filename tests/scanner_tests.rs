@@ -124,6 +124,21 @@ fn file_ignore_suppresses_all() {
 }
 
 #[test]
+fn all_caps_identifier_as_value_ignored() {
+    // e.g. generic-api-key: api_key = "MY_PROD_API_KEY_VALUE" — all-caps env ref, not a secret
+    let src = r#"api_key = "MY_PROD_API_KEY_VALUE""#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-api-key".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
+fn template_var_as_value_ignored() {
+    let src = r#"secret = "${SECRET_KEY_ENV_VAR}""#;
+    let ids = findings_for(src);
+    assert!(!ids.contains(&"generic-secret".to_string()), "false positive: {ids:?}");
+}
+
+#[test]
 fn inline_allow_suppresses_finding() {
     let key = t(&["sk-aBcDeFgHiJk", "LmNoPqRsTuVwXyZ123456789012345678901"]);
     let src = format!("OPENAI_API_KEY={key}  // secox:allow");
