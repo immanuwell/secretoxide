@@ -153,6 +153,44 @@ tests/fixtures/
 
 ---
 
+## verify secrets are still active
+
+Add `--verify` and secox will ping each provider's API to check if the secret is still live:
+
+```bash
+secox scan --verify
+secox scan --staged --verify
+secox scan --git-history --verify
+```
+
+Each finding gets a status line:
+
+```
+  Status: ✓ verified active
+  Status: ✗ invalid / rotated
+```
+
+Providers with live verification:
+
+| Provider | Covered rules |
+|---|---|
+| GitHub | PAT (classic + fine-grained), OAuth token, App token |
+| OpenAI | API key, project key |
+| Anthropic | API key |
+| HuggingFace | Access token |
+| GitLab | Personal access token |
+| Slack | Bot, user, and app tokens |
+| Stripe | Live secret key, restricted key |
+| SendGrid | API key |
+| Mailchimp | API key |
+| DigitalOcean | Personal access token |
+| Linear | API key |
+| Doppler | Service token |
+
+Providers not yet verified (AWS, Twilio, Databricks, Azure) require HMAC signing or multi-credential correlation — plain HTTP check isn't enough.
+
+---
+
 ## everything else
 
 ```bash
