@@ -1,0 +1,17 @@
+[package]
+name = "secox"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-setup CLI secret scanner — catches credentials before they leave your machine"
+license = "MIT"
+keywords = ["security", "secrets", "scanner", "credentials"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "secox"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "color"] }
+anyhow = "1"
+colored = "2"
