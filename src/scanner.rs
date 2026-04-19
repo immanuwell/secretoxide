@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use walkdir::WalkDir;
 
 use crate::{
     rules::{redact, RULES},
@@ -104,7 +105,43 @@ pub fn scan_staged(_repo_root: &Path) -> Result<Vec<Finding>> {
     Ok(vec![]) // TODO: implement
 }
 
-// Placeholder — scan_directory added in next commit
-pub fn scan_directory(_path: &Path) -> Result<Vec<Finding>> {
-    Ok(vec![])
+fn is_lock_file(path: &Path) -> bool {
+    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+    matches!(
+        name.as_ref(),
+        "package-lock.json" | "yarn.lock" | "pnpm-lock.yaml"
+            | "Cargo.lock" | "Gemfile.lock" | "poetry.lock"
+            | "composer.lock" | "go.sum" | "Pipfile.lock"
+    )
+}
+
+pub fn scan_directory(path: &Path) -> Result<Vec<Finding>> {
+    let mut findings = Vec::new();
+
+    for entry in WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let p = entry.path();
+
+        if p.components().any(|c| c.as_os_str() == ".git") {
+            continue;
+        }
+
+        if !p.is_file() {
+            continue;
+        }
+
+        if is_lock_file(p) {
+            continue;
+        }
+
+        match scan_file(p) {
+            Ok(mut f) => findings.append(&mut f),
+            Err(_) => {}
+        }
+    }
+
+    Ok(findings)
 }
