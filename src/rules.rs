@@ -41,6 +41,19 @@ pub fn is_placeholder(value: &str) -> bool {
         || value.chars().collect::<std::collections::HashSet<_>>().len() <= 2
 }
 
+/// Number of distinct character classes present in `s` (uppercase / lowercase /
+/// digit / non-alphanumeric).  Real credentials almost always use at least two.
+pub fn char_class_diversity(s: &str) -> u8 {
+    let (mut upper, mut lower, mut digit, mut special) = (false, false, false, false);
+    for c in s.chars() {
+        if c.is_ascii_uppercase() { upper = true; }
+        else if c.is_ascii_lowercase() { lower = true; }
+        else if c.is_ascii_digit() { digit = true; }
+        else { special = true; }
+    }
+    upper as u8 + lower as u8 + digit as u8 + special as u8
+}
+
 /// Shannon entropy in bits per character — genuine secrets tend to score > 3.5.
 pub fn entropy(s: &str) -> f64 {
     if s.is_empty() {
