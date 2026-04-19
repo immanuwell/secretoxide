@@ -325,7 +325,7 @@ fn build_rules() -> Vec<CompiledRule> {
             Confidence::Low,
             1,
             // Exclude template syntax (${ {{ <%) and function calls (parens/brackets).
-            r#"(?m)^(?i)(?:PASSWORD|PASSWD|SECRET|API_KEY|APIKEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*(?!\$\{)(?!\{\{)(?!<%)([^\s#'"()\[\]{}<>$]{12,})"#,
+            r#"(?m)^(?i)(?:PASSWORD|PASSWD|SECRET|API_KEY|APIKEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*([^\s#'"()\[\]{}<>$]{12,})"#,
         ),
     ];
 
