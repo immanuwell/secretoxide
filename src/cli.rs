@@ -123,6 +123,12 @@ pub enum Commands {
         /// rooted paths ("/vendor"), wildcards ("*.snap"), or "**/" prefixes.
         #[arg(long, value_name = "PATTERN")]
         ignore: Vec<String>,
+
+        /// Verify each finding against its provider's API (makes live network requests).
+        /// Adds a ✓ verified / ✗ invalid status to each finding.
+        /// Unsupported providers (AWS, Twilio, …) are left unverified.
+        #[arg(long)]
+        verify: bool,
     },
 
     /// Interactively triage findings: rotate real secrets, allow false positives.

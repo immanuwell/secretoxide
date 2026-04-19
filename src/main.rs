@@ -4,6 +4,7 @@ mod git;
 mod output;
 mod resolve;
 mod rotation;
+mod verify;
 
 use secox_lib::{ignore::SecoxIgnore, rules, scanner, types};
 
@@ -27,8 +28,8 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { uninstall, global } => cmd_init(uninstall, global),
-        Commands::Scan { path, staged, git_history, format, no_fail, include_low, ignore } => {
-            cmd_scan(path, staged, git_history, format, no_fail, include_low, ignore)
+        Commands::Scan { path, staged, git_history, format, no_fail, include_low, ignore, verify } => {
+            cmd_scan(path, staged, git_history, format, no_fail, include_low, ignore, verify)
         }
         Commands::Resolve { staged, no_staged } => cmd_resolve(staged && !no_staged),
         Commands::Rules { format } => cmd_rules(format),
@@ -123,6 +124,7 @@ fn cmd_scan(
     no_fail: bool,
     include_low: bool,
     ignore_cli: Vec<String>,
+    do_verify: bool,
 ) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let repo_root = git::find_git_root(&cwd).unwrap_or_else(|| cwd.clone());
@@ -189,6 +191,24 @@ fn cmd_scan(
                 .then(a.file.cmp(&b.file))
                 .then(a.line_number.cmp(&b.line_number))
         });
+    }
+
+    // Verify live secrets against provider APIs if requested.
+    if do_verify && !findings.is_empty() {
+        let verifiable = findings.iter().filter(|f| verify::supported(f.rule_id)).count();
+        if format == OutputFormat::Text {
+            eprintln!(
+                "  {} Verifying {}/{} finding(s) against provider APIs…\n",
+                "⚡".cyan(),
+                verifiable,
+                findings.len(),
+            );
+        }
+        for f in &mut findings {
+            if !f.secret_raw.is_empty() {
+                f.verified = verify::verify(f.rule_id, &f.secret_raw);
+            }
+        }
     }
 
     // Suppress findings that are already in the baseline.

@@ -250,6 +250,7 @@ fn check_sensitive_filename(
         secret_raw:     String::new(),
         commit:         commit.map(|s| s.to_string()),
         commit_message: commit_message.map(|s| s.to_string()),
+        verified: None,
     })
 }
 
@@ -382,6 +383,7 @@ pub fn scan_content(
                     secret_raw: secret.to_string(),
                     commit: commit.map(|s| s.to_string()),
                     commit_message: commit_message.map(|s| s.to_string()),
+                    verified: None,
                 });
             }
         }

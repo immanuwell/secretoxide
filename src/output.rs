@@ -77,6 +77,12 @@ fn print_findings_text(findings: &[Finding]) {
                 msg.dimmed()
             );
         }
+
+        match f.verified {
+            Some(true)  => println!("     {} {}", "Status:".dimmed(), "✓ verified active".green().bold()),
+            Some(false) => println!("     {} {}", "Status:".dimmed(), "✗ invalid / rotated".red().bold()),
+            None        => {}
+        }
     }
     println!();
 }
@@ -99,6 +105,7 @@ fn print_json(findings: &[Finding]) {
                 "secret_preview": f.secret_preview,
                 "commit": f.commit,
                 "commit_message": f.commit_message,
+                "verified": f.verified,
             })
         })
         .collect();
@@ -197,6 +204,11 @@ pub fn print_summary(findings: &[Finding], format: OutputFormat) {
         if high > 0 { println!("    {} high confidence", high.to_string().red()); }
         if med > 0  { println!("    {} medium confidence", med.to_string().yellow()); }
         if low > 0  { println!("    {} low confidence", low.to_string().dimmed()); }
+
+        let active  = findings.iter().filter(|f| f.verified == Some(true)).count();
+        let invalid = findings.iter().filter(|f| f.verified == Some(false)).count();
+        if active > 0  { println!("    {} verified active",          active.to_string().green()); }
+        if invalid > 0 { println!("    {} invalid / rotated",        invalid.to_string().dimmed()); }
     }
     println!();
 }

@@ -31,6 +31,8 @@ pub struct Finding {
     pub secret_raw: String,
     pub commit: Option<String>,
     pub commit_message: Option<String>,
+    /// Set by --verify: Some(true) = active, Some(false) = revoked/invalid, None = not checked.
+    pub verified: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
