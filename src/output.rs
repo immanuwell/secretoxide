@@ -28,6 +28,13 @@ pub fn print_findings(findings: &[Finding], format: OutputFormat) {
     }
 }
 
+// fn redact_line(line: &str, secret_raw: &str, secret_preview: &str) -> String {
+//     if secret_raw.is_empty() {
+//         return line.to_string();
+//     }
+//     line.replacen(secret_raw, secret_preview, 1)
+// }
+
 fn print_findings_text(findings: &[Finding]) {
     if findings.is_empty() {
         println!("{}", "  No secrets found.".green().bold());
@@ -60,12 +67,12 @@ fn print_findings_text(findings: &[Finding]) {
             f.secret_preview.yellow()
         );
 
-        let line_display = if f.line.len() > 120 {
-            format!("{}…", &f.line[..120])
-        } else {
-            f.line.clone()
-        };
-        println!("     {} {}", "Line:".dimmed(), line_display);
+        // let line_display = if f.line.len() > 120 {
+        //     format!("{}…", &f.line[..120])
+        // } else {
+        //     f.line.clone()
+        // };
+        // println!("     {} {}", "Line:".dimmed(), line_display);
 
         if let Some(ref commit) = f.commit {
             let short = &commit[..commit.len().min(8)];
